@@ -2,7 +2,7 @@
 
 Contributes must follow these rules:
 
- * no vendors code and no namespaces
+ * no vendors code, no namespaces, no global variables, new functions nor new classes (yes, I know, it's hard)
  * every PHP functionality must be included in the `microframework.php` file
  * the [PHP documentation](http://php.net/manual/en/indexes.functions.php) is full of functionalities, use them!
  * the code must be documented (one big file is hard to read, one big undocumented source is impossible to read)
