@@ -15,6 +15,10 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   # developers only have to visit this IP in their browser
   config.vm.network :private_network, ip: "192.168.30.30"
 
+  config.vm.provision "shell", inline: "apt-get update"
   config.vm.provision "shell", inline: "apt-get install -y apache2 php5 libapache2-mod-php5"
+  config.vm.provision "shell", inline: "a2enmod rewrite"
+  config.vm.provision "shell", inline: "sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf"
+  config.vm.provision "shell", inline: "sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/sites-available/default"
   config.vm.provision "shell", run: "always", inline: "service apache2 reload"
 end
