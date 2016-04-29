@@ -144,24 +144,24 @@ return function () {
             assert(is_callable($cb));
             assert(is_numeric($priority));
 
-            /**
-             * Arguments passed to the script.
-             *
-             * @link http://php.net/manual/en/reserved.variables.argv.php
-             *
-             * @var array
-             */
-            $argv = $GLOBALS['argv'];
+            if (0 === $priority) {
+                /**
+                 * Arguments passed to the script.
+                 *
+                 * @link http://php.net/manual/en/reserved.variables.argv.php
+                 *
+                 * @var array
+                 */
+                $argv = $GLOBALS['argv'];
 
-            if ($priority > 0) {
-                // Recursion is used to set callback priority
-                register_shutdown_function($deploy, $cb, $priority - 1);
-            } else {
                 $argv[0] = $cb;
                 // register_shutdown_function is used to call added functions when script ends
                 // http://it2.php.net/manual/en/function.register-shutdown-function.php
-                call_user_func_array('register_shutdown_function', $argv);
+                return call_user_func_array('register_shutdown_function', $argv);
             }
+
+            // Recursion is used to set callback priority
+            return register_shutdown_function($deploy, $cb, $priority - 1);
         };
     } elseif (is_null($deploy)) {
         /**
@@ -190,38 +190,41 @@ return function () {
 
             if ($priority > 0) {
                 // Recursion is used to set callback priority
-                register_shutdown_function($deploy, $regex, $cb, $method, $priority - 1);
-            } elseif (preg_match('#'.$method.'#', $_SERVER['REQUEST_METHOD'])) {
-                if (preg_match('#^'.$base.$regex.'$#', $_SERVER['REQUEST_URI'], $matches)) {
-                    // Named subpatterns are allowed
-                    // http://it2.php.net/manual/en/regexp.reference.subpatterns.php
-                    $matches = array_unique($matches);
-                    // If matches is provided, then it is filled with the results of search.
-                    // $matches[0] will contain the text that matched the full pattern,
-                    // $matches[1] will have the text that matched the first captured parenthesized
-                    // subpattern, and so on.
-                    $start_match = $matches[0];
-                    unset($matches[0]);
+                return register_shutdown_function($deploy, $regex, $cb, $method, $priority - 1);
+            }
 
-                    // Snippet used to extract parameter from a callable object.
-                    $reflector = (is_string($cb) && function_exists($cb)) || $cb instanceof Closure
-                        ? new ReflectionFunction($cb)
-                        : new ReflectionMethod($cb);
-                    $params = array();
-                    foreach ($reflector->getParameters() as $parameter) {
-                        // reset to prevent key value
-                        $params[$parameter->name] = null;
-                    }
-                    // user can use named parameters only if explicitly requested
-                    if (array_intersect(array_keys($params), array_keys($matches))) {
-                        $matches = array_merge($params, $matches);
-                    }
-                    array_unshift($matches, $cb);
+            if (
+                preg_match('#'.$method.'#', $_SERVER['REQUEST_METHOD']) &&
+                preg_match('#^'.$base.$regex.'$#', $_SERVER['REQUEST_URI'], $matches)
+            ) {
+                // Named subpatterns are allowed
+                // http://it2.php.net/manual/en/regexp.reference.subpatterns.php
+                $matches = array_unique($matches);
+                // If matches is provided, then it is filled with the results of search.
+                // $matches[0] will contain the text that matched the full pattern,
+                // $matches[1] will have the text that matched the first captured parenthesized
+                // subpattern, and so on.
+                $start_match = $matches[0];
+                unset($matches[0]);
 
-                    // register_shutdown_function is used to call added functions when script ends
-                    // http://it2.php.net/manual/en/function.register-shutdown-function.php
-                    call_user_func_array('register_shutdown_function', $matches);
+                // Snippet used to extract parameter from a callable object.
+                $reflector = (is_string($cb) && function_exists($cb)) || $cb instanceof Closure
+                    ? new ReflectionFunction($cb)
+                    : new ReflectionMethod($cb);
+                $params = array();
+                foreach ($reflector->getParameters() as $parameter) {
+                    // reset to prevent key value
+                    $params[$parameter->name] = null;
                 }
+                // user can use named parameters only if explicitly requested
+                if (array_intersect(array_keys($params), array_keys($matches))) {
+                    $matches = array_merge($params, $matches);
+                }
+                array_unshift($matches, $cb);
+
+                // register_shutdown_function is used to call added functions when script ends
+                // http://it2.php.net/manual/en/function.register-shutdown-function.php
+                return call_user_func_array('register_shutdown_function', $matches);
             }
         };
     }
