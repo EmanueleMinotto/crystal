@@ -7,26 +7,15 @@ spl_autoload_register(function ($class) {
     // Use predefined paths
     $paths = explode(PATH_SEPARATOR, get_include_path());
 
-    // fix for UNIX
-    if (PATH_SEPARATOR === ':') {
-        foreach ($paths as $key => $value) {
-            if (substr(strtolower($value), 0, 4) === 'http' && isset($paths[$key + 1])) {
-                $paths[$key] .= ':' . $paths[$key + 1];
-                unset($paths[$key + 1]);
-            }
-        }
-    }
     // remove duplicated paths
     $paths = array_values(array_unique($paths));
 
     // Realpaths and URLs
     array_walk($paths, function (&$path) {
-        $path = filter_var($path, FILTER_VALIDATE_URL)
-            ? rtrim($path, '/') . '/'
-            : rtrim(realpath($path), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+        $path = rtrim(realpath($path), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
     });
     array_filter($paths, function ($path) {
-        return !is_null(trim($path, '/' . DIRECTORY_SEPARATOR));
+        return !is_null(trim($path, '/'.DIRECTORY_SEPARATOR));
     });
 
     // Use predefined extensions
@@ -48,85 +37,9 @@ spl_autoload_register(function ($class) {
     // Check if file exists and require(_once) it
     foreach ($paths as $path) {
         foreach ($extensions as $extension) {
-            $uri = filter_var($path, FILTER_VALIDATE_URL)
-                ? $path . implode('/', $tokens) . $extension
-                : $path . implode(DIRECTORY_SEPARATOR, $tokens) . $extension;
+            $uri = $path.implode(DIRECTORY_SEPARATOR, $tokens).$extension;
 
-            if (filter_var($uri, FILTER_VALIDATE_URL)) {
-                if (ini_get('allow_url_fopen') && ini_get('allow_url_include')) {
-                    // http://php.net/manual/en/filesystem.configuration.php#ini.allow-url-include
-
-                    // spl_autoload_register returns bool
-                    // http://it2.php.net/manual/en/function.spl-autoload-register.php
-                    return ((require_once $uri) === 1);
-                } elseif (extension_loaded('curl')) {
-                    // cURL is a preferred mode
-                    $ch = curl_init($uri);
-
-                    curl_setopt_array($ch, array(
-                        CURLOPT_HEADER => 0,
-                        CURLOPT_RETURNTRANSFER => 1,
-                        CURLOPT_BINARYTRANSFER => 1,
-                        CURLOPT_FOLLOWLOCATION => 1,
-                        CURLOPT_FRESH_CONNECT => 1,
-                        CURLOPT_SSL_VERIFYHOST => 0,
-                        CURLOPT_SSL_VERIFYPEER => 0,
-                        CURLOPT_FAILONERROR => 1
-                    ));
-
-                    $content = curl_exec($ch);
-
-                    // Loading only right pages
-                    if (curl_getinfo($ch, CURLINFO_HTTP_CODE) != 200) {
-                        continue;
-                    }
-
-                    curl_close($ch);
-
-                    // if the time it's not a problem the file will be saved for a faster access
-                    // file will be written in first accessible directory in `$paths`
-                    if (!ini_get('max_execution_time')) {
-                        foreach ($paths as $path) {
-                            if (filter_var($path, FILTER_VALIDATE_URL)) {
-                                continue;
-                            }
-
-                            $file = $path . implode(DIRECTORY_SEPARATOR, $tokens) . $extension;
-                            if (is_writable($path) && (!file_exists($file) || is_writable($file))) {
-                                // create the directory
-                                if (!file_exists(dirname($file))) {
-                                    for ($i = 0; $i < count($tokens); $i++) {
-                                        $dir = $path . implode(DIRECTORY_SEPARATOR, array_slice($tokens, 0, $i));
-                                        if (!file_exists($dir)) {
-                                            mkdir($dir);
-                                        }
-                                    }
-                                }
-
-                                $handle = fopen($file, 'w+');
-                                fwrite($handle, $content);
-                                fclose($handle);
-
-                                return ((require_once $file) === 1);
-                            }
-                        }
-                    } elseif (is_writable(sys_get_temp_dir())) {
-                        $tmp_file = tempnam(sys_get_temp_dir(), '__autoload');
-
-                        $handle = fopen($tmp_file, 'w+');
-                        fwrite($handle, $content);
-                        fclose($handle);
-
-                        $return = ((require_once $tmp_file) === 1);
-
-                        unlink($tmp_file);
-
-                        // spl_autoload_register returns bool
-                        // http://it2.php.net/manual/en/function.spl-autoload-register.php
-                        return $return;
-                    }
-                }
-            } elseif (file_exists($uri)) {
+            if (file_exists($uri)) {
                 // spl_autoload_register returns bool
                 // http://it2.php.net/manual/en/function.spl-autoload-register.php
                 return ((require_once $uri) === 1);
