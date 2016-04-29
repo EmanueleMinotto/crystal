@@ -126,8 +126,12 @@ return function () {
             break;
     }
 
+    if (!is_null($deploy)) {
+        goto invoke_deploy;
+    }
+
     // functions have to be stored only once
-    if (is_null($deploy) && PHP_SAPI === 'cli') {
+    if (PHP_SAPI === 'cli') {
         /**
          * Command line interface for the main function.
          *
@@ -162,71 +166,75 @@ return function () {
             // Recursion is used to set callback priority
             return register_shutdown_function($deploy, $cb, $priority - 1);
         };
-    } elseif (is_null($deploy)) {
-        /**
-         * Function used as a router.
-         *
-         * @param string   $regex    Regular expression used to match requested URL
-         * @param callback $cb       Function invoked when there's a match
-         * @param string   $method   Request method(s)
-         * @param float    $priority Set `$cb` priority from 0 (high) to ~1.8e308 (low)
-         *
-         * @link http://php.net/manual/en/language.types.float.php
-         *
-         * @return void
-         */
-        $deploy = function ($regex, $cb, $method = 'GET', $priority = 0) use (&$deploy, $matches, $base) {
-            // Checking well formed call
-            assert(is_string($regex));
-            assert(is_callable($cb));
-            assert(is_string($method));
-            assert(is_numeric($priority));
 
-            // match stored as unique using the Adler-32 algorithm that is faster than md5
-            // http://en.wikipedia.org/wiki/Adler-32
-            // http://3v4l.org/7MC3j
-            $matches[hash('adler32', $regex)] = $regex;
-
-            if ($priority > 0) {
-                // Recursion is used to set callback priority
-                return register_shutdown_function($deploy, $regex, $cb, $method, $priority - 1);
-            }
-
-            if (
-                preg_match('#'.$method.'#', $_SERVER['REQUEST_METHOD']) &&
-                preg_match('#^'.$base.$regex.'$#', $_SERVER['REQUEST_URI'], $matches)
-            ) {
-                // Named subpatterns are allowed
-                // http://it2.php.net/manual/en/regexp.reference.subpatterns.php
-                $matches = array_unique($matches);
-                // If matches is provided, then it is filled with the results of search.
-                // $matches[0] will contain the text that matched the full pattern,
-                // $matches[1] will have the text that matched the first captured parenthesized
-                // subpattern, and so on.
-                $start_match = $matches[0];
-                unset($matches[0]);
-
-                // Snippet used to extract parameter from a callable object.
-                $reflector = (is_string($cb) && function_exists($cb)) || $cb instanceof Closure
-                    ? new ReflectionFunction($cb)
-                    : new ReflectionMethod($cb);
-                $params = array();
-                foreach ($reflector->getParameters() as $parameter) {
-                    // reset to prevent key value
-                    $params[$parameter->name] = null;
-                }
-                // user can use named parameters only if explicitly requested
-                if (array_intersect(array_keys($params), array_keys($matches))) {
-                    $matches = array_merge($params, $matches);
-                }
-                array_unshift($matches, $cb);
-
-                // register_shutdown_function is used to call added functions when script ends
-                // http://it2.php.net/manual/en/function.register-shutdown-function.php
-                return call_user_func_array('register_shutdown_function', $matches);
-            }
-        };
+        goto invoke_deploy;
     }
 
+    /**
+     * Function used as a router.
+     *
+     * @param string   $regex    Regular expression used to match requested URL
+     * @param callback $cb       Function invoked when there's a match
+     * @param string   $method   Request method(s)
+     * @param float    $priority Set `$cb` priority from 0 (high) to ~1.8e308 (low)
+     *
+     * @link http://php.net/manual/en/language.types.float.php
+     *
+     * @return void
+     */
+    $deploy = function ($regex, $cb, $method = 'GET', $priority = 0) use (&$deploy, $matches, $base) {
+        // Checking well formed call
+        assert(is_string($regex));
+        assert(is_callable($cb));
+        assert(is_string($method));
+        assert(is_numeric($priority));
+
+        // match stored as unique using the Adler-32 algorithm that is faster than md5
+        // http://en.wikipedia.org/wiki/Adler-32
+        // http://3v4l.org/7MC3j
+        $matches[hash('adler32', $regex)] = $regex;
+
+        if ($priority > 0) {
+            // Recursion is used to set callback priority
+            return register_shutdown_function($deploy, $regex, $cb, $method, $priority - 1);
+        }
+
+        if (
+            preg_match('#'.$method.'#', $_SERVER['REQUEST_METHOD']) &&
+            preg_match('#^'.$base.$regex.'$#', $_SERVER['REQUEST_URI'], $matches)
+        ) {
+            // Named subpatterns are allowed
+            // http://it2.php.net/manual/en/regexp.reference.subpatterns.php
+            $matches = array_unique($matches);
+            // If matches is provided, then it is filled with the results of search.
+            // $matches[0] will contain the text that matched the full pattern,
+            // $matches[1] will have the text that matched the first captured parenthesized
+            // subpattern, and so on.
+            $start_match = $matches[0];
+            unset($matches[0]);
+
+            // Snippet used to extract parameter from a callable object.
+            $reflector = (is_string($cb) && function_exists($cb)) || $cb instanceof Closure
+                ? new ReflectionFunction($cb)
+                : new ReflectionMethod($cb);
+            $params = array();
+            foreach ($reflector->getParameters() as $parameter) {
+                // reset to prevent key value
+                $params[$parameter->name] = null;
+            }
+            // user can use named parameters only if explicitly requested
+            if (array_intersect(array_keys($params), array_keys($matches))) {
+                $matches = array_merge($params, $matches);
+            }
+            array_unshift($matches, $cb);
+
+            // register_shutdown_function is used to call added functions when script ends
+            // http://it2.php.net/manual/en/function.register-shutdown-function.php
+            return call_user_func_array('register_shutdown_function', $matches);
+        }
+    };
+
+    // invoking deploy
+    invoke_deploy:
     return call_user_func_array($deploy, func_get_args());
 };
