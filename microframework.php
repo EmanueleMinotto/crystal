@@ -100,12 +100,24 @@ return function () {
     // http://www.php.net/manual/en/regexp.reference.conditional.php
     // http://stackoverflow.com/questions/14598972/catch-all-regular-expression
     switch (func_num_args()) {
-        case 0:
-            if (PHP_SAPI !== 'cli') {
-                return '/?(?!('.implode('|', $matches).')$).*';
-            }
-            break;
         case 1:
+            // Set of utilities
+            switch ($args[0]) {
+                case 'get':
+                case 'post':
+                case 'cookie':
+                case 'env':
+                case 'request':
+                case 'server':
+                    return $GLOBALS['_'.strtoupper($args[0])];
+                    break;
+                case 'route_not_found':
+                    if (PHP_SAPI !== 'cli') {
+                        return '(?!('.implode('|', $matches).')$).*';
+                    }
+                    break;
+            }
+
             // using $GLOBALS as a container, variable names must match
             // this regular expression
             // http://www.php.net/manual/en/language.variables.basics.php
