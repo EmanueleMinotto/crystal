@@ -201,17 +201,17 @@ return function () {
 
         if (
             preg_match('#'.$method.'#', $_SERVER['REQUEST_METHOD']) &&
-            preg_match('#^'.$base.$regex.'$#', $_SERVER['REQUEST_URI'], $matches)
+            preg_match('#^'.$base.$regex.'$#', $_SERVER['REQUEST_URI'], $submatches)
         ) {
             // Named subpatterns are allowed
             // http://it2.php.net/manual/en/regexp.reference.subpatterns.php
-            $matches = array_unique($matches);
+            $submatches = array_unique($submatches);
             // If matches is provided, then it is filled with the results of search.
-            // $matches[0] will contain the text that matched the full pattern,
-            // $matches[1] will have the text that matched the first captured parenthesized
+            // $submatches[0] will contain the text that matched the full pattern,
+            // $submatches[1] will have the text that matched the first captured parenthesized
             // subpattern, and so on.
-            $start_match = $matches[0];
-            unset($matches[0]);
+            $start_match = $submatches[0];
+            unset($submatches[0]);
 
             // Snippet used to extract parameter from a callable object.
             $reflector = (is_string($cb) && function_exists($cb)) || $cb instanceof Closure
@@ -223,14 +223,14 @@ return function () {
                 $params[$parameter->name] = null;
             }
             // user can use named parameters only if explicitly requested
-            if (array_intersect(array_keys($params), array_keys($matches))) {
-                $matches = array_merge($params, $matches);
+            if (array_intersect(array_keys($params), array_keys($submatches))) {
+                $submatches = array_merge($params, $submatches);
             }
-            array_unshift($matches, $cb);
+            array_unshift($submatches, $cb);
 
             // register_shutdown_function is used to call added functions when script ends
             // http://it2.php.net/manual/en/function.register-shutdown-function.php
-            return call_user_func_array('register_shutdown_function', $matches);
+            return call_user_func_array('register_shutdown_function', $submatches);
         }
     };
 
