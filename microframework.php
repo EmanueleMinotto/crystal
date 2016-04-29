@@ -74,11 +74,11 @@ return function () {
      *
      * @var null|array
      */
-    static $dependencies;
+    static $deps;
 
     // there's already a container for variables
-    if (is_null($dependencies)) {
-        $dependencies =& $GLOBALS;
+    if (is_null($deps)) {
+        $deps =& $GLOBALS;
     }
 
     /**
@@ -94,13 +94,12 @@ return function () {
     }
 
     // used to shorten code
-    $num_args = func_num_args();
-    $get_args = func_get_args();
+    $args = func_get_args();
 
     // used to retrieve currently defined matches
     // http://www.php.net/manual/en/regexp.reference.conditional.php
     // http://stackoverflow.com/questions/14598972/catch-all-regular-expression
-    switch ($num_args) {
+    switch (func_num_args()) {
         case 0:
             if (PHP_SAPI !== 'cli') {
                 return '/?(?!('.implode('|', $matches).')$).*';
@@ -110,19 +109,19 @@ return function () {
             // using $GLOBALS as a container, variable names must match
             // this regular expression
             // http://www.php.net/manual/en/language.variables.basics.php
-            if (preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*#', $get_args[0])) {
-                return is_callable($dependencies[$get_args[0]])
-                    ? call_user_func($dependencies[$get_args[0]])
-                    : $dependencies[$get_args[0]];
+            if (preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*#', $args[0])) {
+                return is_callable($deps[$args[0]])
+                    ? call_user_func($deps[$args[0]])
+                    : $deps[$args[0]];
             }
             break;
         case 2:
             // using $GLOBALS as a container, variable names must match
             // this regular expression
             // http://www.php.net/manual/en/language.variables.basics.php
-            if (preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*#', $get_args[0])) {
+            if (preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*#', $args[0])) {
                 // functions used for Dependency Injection and settings
-                return $dependencies[$get_args[0]] = $get_args[1];
+                return $deps[$args[0]] = $args[1];
             }
             break;
     }
