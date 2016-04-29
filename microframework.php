@@ -182,7 +182,7 @@ return function () {
      *
      * @return void
      */
-    $deploy = function ($regex, $cb, $method = 'GET', $priority = 0) use (&$deploy, $matches, $base) {
+    $deploy = function ($regex, $cb, $method = 'GET', $priority = 0) use (&$deploy, &$matches, $base) {
         // Checking well formed call
         assert(is_string($regex));
         assert(is_callable($cb));
