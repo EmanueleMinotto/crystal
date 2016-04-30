@@ -72,14 +72,9 @@ return function () {
     /**
      * Dependency Injection callbacks, used for settings too.
      *
-     * @var null|array
+     * @var array
      */
-    static $deps;
-
-    // there's already a container for variables
-    if (is_null($deps)) {
-        $deps =& $GLOBALS;
-    }
+    static $deps = array();
 
     /**
      * This variable is a constant during an instance.
