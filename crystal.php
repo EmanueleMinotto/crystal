@@ -128,6 +128,18 @@ return function () {
 
     // used to shorten code
     $args = func_get_args();
+    
+    // hack used to include PHP 7 enhancements and features
+    // without breaking changes nor new files
+    // https://3v4l.org/mArem
+    if (PHP_MAJOR_VERSION >= 7) {
+        $handler = fopen(__FILE__, 'r');
+        fseek($handler, __COMPILER_HALT_OFFSET__);
+
+        eval(stream_get_contents($handler));
+
+        fclose($handler);
+    }
 
     // used to retrieve currently defined matches
     // http://www.php.net/manual/en/regexp.reference.conditional.php
@@ -286,3 +298,163 @@ return function () {
     invoke_deploy:
     return call_user_func_array($deploy, func_get_args());
 };
+
+__halt_compiler();
+
+// PHP 7 features
+
+namespace Psr\Log {
+    if (interface_exists(LoggerInterface::class) && class_exists(LogLevel::class)) {
+        /**
+         * Simple logger implementation based on PSR-3,
+         * implemented without breaking crystal rules.
+         *
+         * @link http://www.php-fig.org/psr/psr-3/
+         */
+        $deps['logger'] = new class implements LoggerInterface
+        {
+            private $logLevels = [
+                LogLevel::DEBUG => LOG_DEBUG,
+                LogLevel::INFO => LOG_INFO,
+                LogLevel::NOTICE => LOG_NOTICE,
+                LogLevel::WARNING => LOG_WARNING,
+                LogLevel::ERROR => LOG_ERR,
+                LogLevel::CRITICAL => LOG_CRIT,
+                LogLevel::ALERT => LOG_ALERT,
+                LogLevel::EMERGENCY => LOG_EMERG,
+            ];
+
+            /**
+             * System is unusable.
+             *
+             * @param string $message
+             * @param array  $context
+             *
+             * @return null
+             */
+            public function emergency($message, array $context = array())
+            {
+                $this->log(LogLevel::EMERGENCY, $message, $context);
+            }
+
+            /**
+             * Action must be taken immediately.
+             *
+             * Example: Entire website down, database unavailable, etc. This should
+             * trigger the SMS alerts and wake you up.
+             *
+             * @param string $message
+             * @param array  $context
+             *
+             * @return null
+             */
+            public function alert($message, array $context = array())
+            {
+                $this->log(LogLevel::ALERT, $message, $context);
+            }
+
+            /**
+             * Critical conditions.
+             *
+             * Example: Application component unavailable, unexpected exception.
+             *
+             * @param string $message
+             * @param array  $context
+             *
+             * @return null
+             */
+            public function critical($message, array $context = array())
+            {
+                $this->log(LogLevel::CRITICAL, $message, $context);
+            }
+
+            /**
+             * Runtime errors that do not require immediate action but should typically
+             * be logged and monitored.
+             *
+             * @param string $message
+             * @param array  $context
+             *
+             * @return null
+             */
+            public function error($message, array $context = array())
+            {
+                $this->log(LogLevel::ERROR, $message, $context);
+            }
+
+            /**
+             * Exceptional occurrences that are not errors.
+             *
+             * Example: Use of deprecated APIs, poor use of an API, undesirable things
+             * that are not necessarily wrong.
+             *
+             * @param string $message
+             * @param array  $context
+             *
+             * @return null
+             */
+            public function warning($message, array $context = array())
+            {
+                $this->log(LogLevel::WARNING, $message, $context);
+            }
+
+            /**
+             * Normal but significant events.
+             *
+             * @param string $message
+             * @param array  $context
+             *
+             * @return null
+             */
+            public function notice($message, array $context = array())
+            {
+                $this->log(LogLevel::NOTICE, $message, $context);
+            }
+
+            /**
+             * Interesting events.
+             *
+             * Example: User logs in, SQL logs.
+             *
+             * @param string $message
+             * @param array  $context
+             *
+             * @return null
+             */
+            public function info($message, array $context = array())
+            {
+                $this->log(LogLevel::INFO, $message, $context);
+            }
+
+            /**
+             * Detailed debug information.
+             *
+             * @param string $message
+             * @param array  $context
+             *
+             * @return null
+             */
+            public function debug($message, array $context = array())
+            {
+                $this->log(LogLevel::DEBUG, $message, $context);
+            }
+
+            /**
+             * Logs with an arbitrary level.
+             *
+             * @param mixed  $level
+             * @param string $message
+             * @param array  $context
+             *
+             * @return null
+             */
+            public function log($level, $message, array $context = array())
+            {
+                syslog(
+                    $this->logLevels[$level],
+                    $message.' '.json_encode($context)
+                );
+            }
+        };
+    }
+}
