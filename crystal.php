@@ -91,7 +91,7 @@ return function () {
     /**
      * Double access utility.
      *
-     * @link 
+     * @link https://github.com/EmanueleMinotto/crystal/wiki/Double-access-utility
      * 
      * @var Closure
      */
