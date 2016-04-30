@@ -88,6 +88,44 @@ return function () {
         $base = quotemeta(rtrim(dirname($_SERVER['SCRIPT_NAME']), '/'));
     }
 
+    /**
+     * Double access utility.
+     *
+     * @link 
+     * 
+     * @var Closure
+     */
+    $doubleAccess = function ($subject) {
+        // real function
+        $fn = function ($data) use (&$fn) {
+            // if there's something that isn't an
+            // array, it'll not be converted
+            if (!is_array($data)) {
+                return;
+            }
+
+            foreach ($data as $key => $value) {
+                // only arrays can be transformed in ArrayObjects
+                // the 2nd condition is used to prevent recursion
+                // other cases are for objects obviously of
+                // another type that will be converted
+                if (is_array($value) && $value !== $data) {
+                    $data[$key] = $fn($value);
+                } elseif ($value === (string) intval($value)) {
+                    $data[$key] = intval($value);
+                } elseif ($value === (string) floatval($value)) {
+                    $data[$key] = floatval($value);
+                }
+            }
+
+            return new ArrayObject($data, 2);
+        };
+
+        // initially all the global data
+        // will be covnerted
+        return $fn($subject);
+    };
+
     // used to shorten code
     $args = func_get_args();
 
@@ -104,12 +142,15 @@ return function () {
                 case 'env':
                 case 'request':
                 case 'server':
-                    return $GLOBALS['_'.strtoupper($args[0])];
+                    return $doubleAccess($GLOBALS['_'.strtoupper($args[0])]);
                     break;
                 case 'route_not_found':
                     if (PHP_SAPI !== 'cli') {
                         return '(?!('.implode('|', $matches).')$).*';
                     }
+                    break;
+                case 'double_access':
+                    return $doubleAccess;
                     break;
             }
 
