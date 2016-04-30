@@ -208,7 +208,7 @@ return function () {
 
         if (
             preg_match('#'.$method.'#', $_SERVER['REQUEST_METHOD']) &&
-            preg_match('#^'.$base.$regex.'$#', $_SERVER['REQUEST_URI'], $submatches)
+            preg_match('#^'.$base.$regex.'$#', parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), $submatches)
         ) {
             // Named subpatterns are allowed
             // http://it2.php.net/manual/en/regexp.reference.subpatterns.php
