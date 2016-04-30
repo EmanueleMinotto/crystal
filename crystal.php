@@ -154,24 +154,24 @@ return function () {
             assert(is_callable($cb));
             assert(is_numeric($priority));
 
-            if (0 === $priority) {
-                /**
-                 * Arguments passed to the script.
-                 *
-                 * @link http://php.net/manual/en/reserved.variables.argv.php
-                 *
-                 * @var array
-                 */
-                $argv = $GLOBALS['argv'];
-
-                $argv[0] = $cb;
-                // register_shutdown_function is used to call added functions when script ends
-                // http://it2.php.net/manual/en/function.register-shutdown-function.php
-                return call_user_func_array('register_shutdown_function', $argv);
+            if ($priority > 0) {
+                // Recursion is used to set callback priority
+                return register_shutdown_function($deploy, $cb, $priority - 1);
             }
 
-            // Recursion is used to set callback priority
-            return register_shutdown_function($deploy, $cb, $priority - 1);
+            /**
+             * Arguments passed to the script.
+             *
+             * @link http://php.net/manual/en/reserved.variables.argv.php
+             *
+             * @var array
+             */
+            $argv = $GLOBALS['argv'];
+
+            $argv[0] = $cb;
+            // register_shutdown_function is used to call added functions when script ends
+            // http://it2.php.net/manual/en/function.register-shutdown-function.php
+            return call_user_func_array('register_shutdown_function', $argv);
         };
 
         goto invoke_deploy;
