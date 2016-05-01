@@ -176,6 +176,13 @@ return function () {
             }
             break;
         case 2:
+            // Set of utilities
+            switch ($args[0]) {
+                case 'double_access':
+                    return $doubleAccess($args[1]);
+                    break;
+            }
+
             // using $GLOBALS as a container, variable names must match
             // this regular expression
             // http://www.php.net/manual/en/language.variables.basics.php
