@@ -155,7 +155,6 @@ return function() {
                 case 'request':
                 case 'server':
                     return $doubleAccess($GLOBALS['_'.strtoupper($args[0])]);
-                    break;
                 case 'route_not_found':
                     if (PHP_SAPI !== 'cli') {
                         return '(?!('.implode('|', $matches).')$).*';
@@ -163,7 +162,6 @@ return function() {
                     break;
                 case 'double_access':
                     return $doubleAccess;
-                    break;
             }
 
             // using $GLOBALS as a container, variable names must match
@@ -180,7 +178,6 @@ return function() {
             switch ($args[0]) {
                 case 'double_access':
                     return $doubleAccess($args[1]);
-                    break;
             }
 
             // using $GLOBALS as a container, variable names must match
@@ -277,7 +274,6 @@ return function() {
             // $submatches[0] will contain the text that matched the full pattern,
             // $submatches[1] will have the text that matched the first captured parenthesized
             // subpattern, and so on.
-            $start_match = $submatches[0];
             unset($submatches[0]);
 
             // Snippet used to extract parameter from a callable object.
