@@ -3,7 +3,7 @@
  * Autoloading based on the PSR-0 standard and extended predefined configuration
  * https://github.com/php-fig/fig-standards/blob/master/accepted/PSR-0.md
  */
-spl_autoload_register(function ($class) {
+spl_autoload_register(function($class) {
     // Use predefined paths
     $paths = explode(PATH_SEPARATOR, get_include_path());
 
@@ -11,10 +11,10 @@ spl_autoload_register(function ($class) {
     $paths = array_values(array_unique($paths));
 
     // Realpaths and URLs
-    array_walk($paths, function (&$path) {
+    array_walk($paths, function(&$path) {
         $path = rtrim(realpath($path), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
     });
-    array_filter($paths, function ($path) {
+    array_filter($paths, function($path) {
         return !is_null(trim($path, '/'.DIRECTORY_SEPARATOR));
     });
 
@@ -30,7 +30,7 @@ spl_autoload_register(function ($class) {
     $class_tokens = explode('_', end($tokens));
     array_pop($tokens);
 
-    array_walk($class_tokens, function (&$class_token) use (&$tokens) {
+    array_walk($class_tokens, function(&$class_token) use (&$tokens) {
         $tokens[] = $class_token;
     });
 
@@ -54,7 +54,7 @@ spl_autoload_register(function ($class) {
 /**
  * A PHP (5.3+) microframework based on anonymous functions.
  */
-return function () {
+return function() {
     /**
      * Used to store functions and allow recursive callbacks.
      *
@@ -95,9 +95,9 @@ return function () {
      * 
      * @var Closure
      */
-    $doubleAccess = function ($subject) {
+    $doubleAccess = function($subject) {
         // real function
-        $fn = function ($data) use (&$fn) {
+        $fn = function($data) use (&$fn) {
             // if there's something that isn't an
             // array, it'll not be converted
             if (!is_array($data)) {
@@ -209,7 +209,7 @@ return function () {
          *
          * @return void
          */
-        $deploy = function ($cb, $priority = 0) use (&$deploy) {
+        $deploy = function($cb, $priority = 0) use (&$deploy) {
             // Checking well formed call
             assert(is_callable($cb));
             assert(is_numeric($priority));
@@ -249,7 +249,7 @@ return function () {
      *
      * @return void
      */
-    $deploy = function ($regex, $cb, $method = 'GET', $priority = 0) use (&$deploy, &$matches, $base) {
+    $deploy = function($regex, $cb, $method = 'GET', $priority = 0) use (&$deploy, &$matches, $base) {
         // Checking well formed call
         assert(is_string($regex));
         assert(is_callable($cb));
