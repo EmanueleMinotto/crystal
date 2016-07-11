@@ -128,7 +128,7 @@ return function () {
 
     // used to shorten code
     $args = func_get_args();
-    
+
     // hack used to include PHP 7 enhancements and features
     // without breaking changes nor new files
     // https://3v4l.org/mArem
