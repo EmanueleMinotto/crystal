@@ -42,7 +42,7 @@ spl_autoload_register(function ($class) {
             if (file_exists($uri)) {
                 // spl_autoload_register returns bool
                 // http://it2.php.net/manual/en/function.spl-autoload-register.php
-                return ((require_once $uri) === 1);
+                return (require_once $uri) === 1;
             }
         }
     }
