@@ -9,9 +9,11 @@ $function = $mf('double_access');
 $_GET = array();
 $_GET['lorem'] = 'ipsum';
 
-echo get_class($function($_GET)).PHP_EOL;
-echo '-'.$function($_GET)->lorem.'-'.PHP_EOL;
-echo '-'.$function($_GET)['lorem'].'-';
+$tmp = $function($_GET);
+
+echo get_class($tmp).PHP_EOL;
+echo '-'.$tmp->lorem.'-'.PHP_EOL;
+echo '-'.$tmp['lorem'].'-';
 
 ?>
 --EXPECT--
