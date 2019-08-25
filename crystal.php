@@ -122,7 +122,7 @@ return function () {
         };
 
         // initially all the global data
-        // will be covnerted
+        // will be converted
         return $fn($subject);
     };
 
