@@ -156,7 +156,7 @@ return function () {
                 case 'server':
                     return $doubleAccess($GLOBALS['_'.strtoupper($args[0])]);
                 case 'route_not_found':
-                    if (PHP_SAPI !== 'cli') {
+                    if (!empty($_SERVER['REQUEST_URI'])) {
                         return '(?!('.implode('|', $matches).')$).*';
                     }
                     break;
@@ -195,7 +195,7 @@ return function () {
     }
 
     // functions have to be stored only once
-    if (PHP_SAPI === 'cli') {
+    if (empty($_SERVER['REQUEST_URI'])) {
         /**
          * Command line interface for the main function.
          *
