@@ -1,9 +1,10 @@
 --TEST--
 CLI usage with arguments
---ARGS--
-foo bar
 --FILE--
 <?php
+
+$GLOBALS['argv'][] = 'foo';
+$GLOBALS['argv'][] = 'bar';
 
 $mf = require_once(__DIR__.'/../crystal.php');
 
