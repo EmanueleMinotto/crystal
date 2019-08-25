@@ -1,0 +1,23 @@
+dist: xenial
+language: php
+
+matrix:
+    include:
+        -
+            dist: precise
+            php: 5.3
+        -
+            dist: precise
+            php: 5.4
+        -
+            dist: precise
+            php: 5.5
+
+php:
+  - 5.6
+  - 7.1
+  - 7.2
+  - 7.3
+  - nightly
+
+script: phpunit -v tests
