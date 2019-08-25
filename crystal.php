@@ -167,7 +167,7 @@ return function () {
             // using $GLOBALS as a container, variable names must match
             // this regular expression
             // http://www.php.net/manual/en/language.variables.basics.php
-            if (preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*#', $args[0])) {
+            if (is_string($args[0]) && preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*#', $args[0])) {
                 return is_callable($deps[$args[0]])
                     ? call_user_func($deps[$args[0]])
                     : $deps[$args[0]];
@@ -183,7 +183,7 @@ return function () {
             // using $GLOBALS as a container, variable names must match
             // this regular expression
             // http://www.php.net/manual/en/language.variables.basics.php
-            if (preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*#', $args[0])) {
+            if (is_string($args[0]) && preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*#', $args[0])) {
                 // functions used for Dependency Injection and settings
                 return $deps[$args[0]] = $args[1];
             }
