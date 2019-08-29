@@ -3,7 +3,11 @@ PSR container when PHP 7.0+
 --SKIPIF--
 <?php
 
-$message = 'Skip: psr/container required';
+$message = 'Skip: psr/container and PHP 7.0+ required';
+
+if (PHP_MAJOR_VERSION < 7) {
+    die($message);
+}
 
 if (!file_exists(__DIR__.'/../vendor/autoload.php')) {
     die($message);
