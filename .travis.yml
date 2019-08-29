@@ -1,6 +1,9 @@
 dist: xenial
 language: php
 
+before_install:
+    - composer require psr/log psr/container
+
 matrix:
     include:
         -
