@@ -460,3 +460,88 @@ namespace Psr\Log {
         };
     }
 }
+
+namespace Psr\Container {
+    if (interface_exists(ContainerInterface::class) && interface_exists(NotFoundExceptionInterface::class)) {
+        /**
+         * Simple container implementation based on PSR-11,
+         * implemented without breaking crystal rules.
+         *
+         * @link https://www.php-fig.org/psr/psr-11/
+         */
+        $deps['container'] = new class($deps) implements ContainerInterface
+        {
+            /**
+             * @var ContainerInterface|null
+             */
+            private static $decoratedContainer;
+
+            /**
+             * @var array
+             */
+            private static $deps = array();
+
+            /**
+             * @param array $deps Dynamic set of dependencies.
+             */
+            public function __construct(array &$deps = array())
+            {
+                self::$deps = $deps;
+            }
+
+            /**
+             * @param ContainerInterface|null $container Optional already existing container to decorate.
+             */
+            public function setContainer(ContainerInterface $container = null)
+            {
+                self::$decoratedContainer = $container;
+            }
+
+            /**
+             * Finds an entry of the container by its identifier and returns it.
+             *
+             * @param string $id Identifier of the entry to look for.
+             *
+             * @throws NotFoundExceptionInterface  No entry was found for **this** identifier.
+             *
+             * @return mixed Entry.
+             */
+            public function get($id)
+            {
+                if (self::$decoratedContainer instanceof ContainerInterface) {
+                    return self::$decoratedLogger->get($id);
+                }
+
+                if (empty(self::$deps[$id])) {
+                    $exception = new class extends \Exception implements NotFoundExceptionInterface
+                    {
+                    };
+
+                    throw $exception;
+                }
+
+                return self::$deps[$id];
+            }
+
+            /**
+             * Returns true if the container can return an entry for the given identifier.
+             * Returns false otherwise.
+             *
+             * `has($id)` returning true does not mean that `get($id)` will not throw an exception.
+             * It does however mean that `get($id)` will not throw a `NotFoundExceptionInterface`.
+             *
+             * @param string $id Identifier of the entry to look for.
+             *
+             * @return bool
+             */
+            public function has($id)
+            {
+                if (self::$decoratedContainer instanceof ContainerInterface) {
+                    return self::$decoratedLogger->has($id);
+                }
+
+                return !empty(self::$deps[$id]);
+            }
+        };
+    }
+}
