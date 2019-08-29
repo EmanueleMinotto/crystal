@@ -328,19 +328,6 @@ namespace Psr\Log {
             ];
 
             /**
-             * @var LoggerInterface|null
-             */
-            private static $decoratedLogger;
-
-            /**
-             * @param LoggerInterface|null $logger Optional already existing logger to decorate.
-             */
-            public function setLogger(LoggerInterface $logger = null)
-            {
-                self::$decoratedLogger = $logger;
-            }
-
-            /**
              * System is unusable.
              *
              * @param string $message
@@ -448,10 +435,6 @@ namespace Psr\Log {
              */
             public function log($level, $message, array $context = array())
             {
-                if (self::$decoratedLogger instanceof LoggerInterface) {
-                    return self::$decoratedLogger->log($level, $message, $context);
-                }
-
                 syslog(
                     $this->logLevels[$level],
                     $message.' '.json_encode($context)
@@ -472,11 +455,6 @@ namespace Psr\Container {
         $deps['container'] = new class($deps) implements ContainerInterface
         {
             /**
-             * @var ContainerInterface|null
-             */
-            private static $decoratedContainer;
-
-            /**
              * @var array
              */
             private static $deps = array();
@@ -490,14 +468,6 @@ namespace Psr\Container {
             }
 
             /**
-             * @param ContainerInterface|null $container Optional already existing container to decorate.
-             */
-            public function setContainer(ContainerInterface $container = null)
-            {
-                self::$decoratedContainer = $container;
-            }
-
-            /**
              * Finds an entry of the container by its identifier and returns it.
              *
              * @param string $id Identifier of the entry to look for.
@@ -508,10 +478,6 @@ namespace Psr\Container {
              */
             public function get($id)
             {
-                if (self::$decoratedContainer instanceof ContainerInterface) {
-                    return self::$decoratedLogger->get($id);
-                }
-
                 if (empty(self::$deps[$id])) {
                     $exception = new class extends \Exception implements NotFoundExceptionInterface
                     {
@@ -536,10 +502,6 @@ namespace Psr\Container {
              */
             public function has($id)
             {
-                if (self::$decoratedContainer instanceof ContainerInterface) {
-                    return self::$decoratedLogger->has($id);
-                }
-
                 return !empty(self::$deps[$id]);
             }
         };
