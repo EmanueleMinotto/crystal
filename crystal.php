@@ -328,6 +328,19 @@ namespace Psr\Log {
             ];
 
             /**
+             * @var LoggerInterface|null
+             */
+            private static $decoratedLogger;
+
+            /**
+             * @param LoggerInterface|null $logger Optional already existing logger to decorate.
+             */
+            public function setLogger(LoggerInterface $logger = null)
+            {
+                self::$decoratedLogger = $logger;
+            }
+
+            /**
              * System is unusable.
              *
              * @param string $message
@@ -435,6 +448,10 @@ namespace Psr\Log {
              */
             public function log($level, $message, array $context = array())
             {
+                if (self::$decoratedLogger instanceof LoggerInterface) {
+                    return self::$decoratedLogger->log($level, $message, $context);
+                }
+
                 syslog(
                     $this->logLevels[$level],
                     $message.' '.json_encode($context)
