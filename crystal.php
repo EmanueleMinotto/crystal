@@ -228,7 +228,7 @@ return function () {
             $argv[0] = $cb;
             // register_shutdown_function is used to call added functions when script ends
             // http://it2.php.net/manual/en/function.register-shutdown-function.php
-            return call_user_func_array('register_shutdown_function', $argv);
+            return call_user_func_array('register_shutdown_function', array_values($argv));
         };
 
         goto invoke_deploy;
@@ -293,7 +293,7 @@ return function () {
 
             // register_shutdown_function is used to call added functions when script ends
             // http://it2.php.net/manual/en/function.register-shutdown-function.php
-            return call_user_func_array('register_shutdown_function', $submatches);
+            return call_user_func_array('register_shutdown_function', array_values($submatches));
         }
     };
 
