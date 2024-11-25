@@ -126,6 +126,23 @@ return function () {
         return $fn($subject);
     };
 
+    /**
+     * Simple template engine to manipulate and render .php files.
+     *
+     * @param string $filename
+     * @param array $data
+     *
+     * @return string
+     */
+    $templateEngine = function ($filename, $data = array()) {
+        ob_start();
+
+        extract($data);
+        require $filename;
+
+        return ob_get_clean();
+    };
+
     // used to shorten code
     $args = func_get_args();
 
@@ -150,6 +167,8 @@ return function () {
                     break;
                 case 'double_access':
                     return $doubleAccess;
+                case 'template_engine':
+                    return $templateEngine;
             }
 
             // using $GLOBALS as a container, variable names must match
