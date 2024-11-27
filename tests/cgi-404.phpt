@@ -13,7 +13,7 @@ $mf('/', function () {
     echo 'Hello World!';
 });
 
-$mf($mf('route_not_found'), function () {
+$mf($mf('router:not-found'), function () {
     echo 'Error 404: Page not Found';
 });
 

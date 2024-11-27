@@ -160,14 +160,14 @@ return function () {
                 case 'request':
                 case 'server':
                     return $doubleAccess($GLOBALS['_'.strtoupper($args[0])]);
-                case 'route_not_found':
+                case 'router:not-found':
                     if (!empty($_SERVER['REQUEST_URI'])) {
                         return '(?!('.implode('|', $matches).')$).*';
                     }
                     break;
-                case 'double_access':
+                case 'utils:double-access':
                     return $doubleAccess;
-                case 'template_engine':
+                case 'template':
                     return $templateEngine;
             }
 
@@ -183,7 +183,7 @@ return function () {
         case 2:
             // Set of utilities
             switch ($args[0]) {
-                case 'double_access':
+                case 'utils:double-access':
                     return $doubleAccess($args[1]);
             }
 

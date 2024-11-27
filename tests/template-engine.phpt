@@ -6,7 +6,7 @@ Template Engine
 $mf = require_once(__DIR__.'/../crystal.php');
 
 $mf(function () use ($mf) {
-    $tpl = $mf('template_engine');
+    $tpl = $mf('template');
 
     echo $tpl(__DIR__.'/template-engine/example.html.php', array(
         'title' => 'Hello World!',

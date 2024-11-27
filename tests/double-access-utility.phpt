@@ -4,7 +4,7 @@ Double access utility
 <?php
 
 $mf = require_once(__DIR__.'/../crystal.php');
-$function = $mf('double_access');
+$function = $mf('utils:double-access');
 
 $_GET = array();
 $_GET['lorem'] = 'ipsum';
