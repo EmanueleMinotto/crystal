@@ -135,6 +135,9 @@ return function () {
      * @return string
      */
     $templateEngine = function ($filename, $data = array()) {
+        assert(file_exists($filename));
+        assert(is_array($data));
+
         ob_start();
 
         extract($data);
