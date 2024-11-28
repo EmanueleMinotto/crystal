@@ -1,56 +1,6 @@
 <?php
 
-/**
- * Autoloading based on the PSR-0 standard and extended predefined configuration
- * https://github.com/php-fig/fig-standards/blob/master/accepted/PSR-0.md
- */
-spl_autoload_register(function ($class) {
-    // Use predefined paths
-    $paths = explode(PATH_SEPARATOR, get_include_path());
-
-    // remove duplicated paths
-    $paths = array_values(array_unique($paths));
-
-    // Realpaths and URLs
-    array_walk($paths, function (&$path) {
-        $path = rtrim(realpath($path), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
-    });
-    array_filter($paths, function ($path) {
-        return !is_null(trim($path, '/'.DIRECTORY_SEPARATOR));
-    });
-
-    // Use predefined extensions
-    $extensions = explode(',', spl_autoload_extensions());
-
-    // Remove initial backslash `\`
-    $class = ltrim($class, chr(92));
-    // Explode by `\`
-    $tokens = explode(chr(92), $class);
-    // Each `_` character in the CLASS NAME is converted to a `DIRECTORY_SEPARATOR`.
-    // The `_` character has no special meaning in the namespace.
-    $class_tokens = explode('_', end($tokens));
-    array_pop($tokens);
-
-    array_walk($class_tokens, function (&$class_token) use (&$tokens) {
-        $tokens[] = $class_token;
-    });
-
-    // Check if file exists and require(_once) it
-    foreach ($paths as $path) {
-        foreach ($extensions as $extension) {
-            $uri = $path.implode(DIRECTORY_SEPARATOR, $tokens).$extension;
-
-            if (file_exists($uri)) {
-                // spl_autoload_register returns bool
-                // http://it2.php.net/manual/en/function.spl-autoload-register.php
-                return (require_once $uri) === 1;
-            }
-        }
-    }
-    // spl_autoload_register returns bool
-    // http://it2.php.net/manual/en/function.spl-autoload-register.php
-    return false;
-});
+### AUTOLOADER ###
 
 /**
  * A PHP (5.3+) microframework based on anonymous functions.
@@ -89,61 +39,7 @@ return function () {
         $base = quotemeta(rtrim(dirname($_SERVER['SCRIPT_NAME']), '/'));
     }
 
-    $deps['template'] = function () {
-        /**
-         * Simple template engine to manipulate and render .php files.
-         *
-         * @param string $filename
-         * @param array $data
-         *
-         * @return string
-         */
-        return function ($filename, $data = array()) {
-            assert(file_exists($filename));
-            assert(is_array($data));
-
-            ob_start();
-
-            extract($data);
-            require $filename;
-
-            return ob_get_clean();
-        };
-    };
-
-    /**
-     * Double access utility.
-     *
-     * @link https://github.com/EmanueleMinotto/crystal/wiki/Double-access-utility
-     *
-     * @var Closure
-     */
-    $deps['utils:double-access'] = function () {
-        // real function
-        return function ($data = array()) use (&$fn) {
-            // if there's something that isn't an
-            // array, it'll not be converted
-            if (!is_array($data)) {
-                return;
-            }
-
-            foreach ($data as $key => $value) {
-                // only arrays can be transformed in ArrayObjects
-                // the 2nd condition is used to prevent recursion
-                // other cases are for objects obviously of
-                // another type that will be converted
-                if (is_array($value) && $value !== $data) {
-                    $data[$key] = $fn($value);
-                } elseif ($value === (string) intval($value)) {
-                    $data[$key] = intval($value);
-                } elseif ($value === (string) floatval($value)) {
-                    $data[$key] = floatval($value);
-                }
-            }
-
-            return new ArrayObject($data, 2);
-        };
-    };
+    ### PHP 5 FUNCTIONS PLACEHOLDER ###
 
     // used to shorten code
     $args = func_get_args();

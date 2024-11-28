@@ -1,0 +1,10 @@
+{
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "*",
+        "phpunit/phpunit": "*"
+    },
+    "scripts": {
+        "build": "php src/build.php && php-cs-fixer fix --quiet",
+        "test": "phpunit tests"
+    }
+}
