@@ -2,6 +2,10 @@
 
 $deps['template:escape'] = function () {
     return function ($value) {
-        return \htmlspecialchars($value);
+        $flags = defined('ENT_SUBSTITUTE')
+            ? ENT_QUOTES | ENT_SUBSTITUTE
+            : ENT_QUOTES;
+
+        return \htmlspecialchars($value, $flags, 'UTF-8');
     };
 };
