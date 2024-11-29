@@ -7,12 +7,20 @@ $mf = require_once(__DIR__.'/../crystal.php');
 
 $mf(function () use ($mf) {
     $tpl = $mf('template');
-    $escape = $mf('template:escape');
 
-    echo $tpl(__DIR__.'/template-engine/example.html.php', array(
-        'title' => 'Hello World!',
-        'name' => $escape("<a href='test'>Test</a>"),
-    ));
+    if (PHP_MAJOR_VERSION < 7) {
+        $escape = $mf('template:escape');
+
+        echo $tpl(__DIR__.'/template-engine/example.html.php', array(
+            'title' => 'Hello World!',
+            'name' => $escape("<a href='test'>Test</a>"),
+        ));
+    } else {
+        echo $tpl->render(__DIR__.'/template-engine/example.html.php', array(
+            'title' => 'Hello World!',
+            'name' => $tpl->e("<a href='test'>Test</a>"),
+        ));
+    }
 });
 
 ?>
