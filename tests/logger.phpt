@@ -10,12 +10,21 @@ openlog('', LOG_CONS | LOG_NOWAIT | LOG_PERROR, LOG_LPR);
 $mf(function () use ($mf) {
     $logger = $mf('logger');
 
-    $logger('info', 'lorem ipsum', array(
-        'foo' => true,
-    ));
-    $logger('debug', 'dolor sit amet', array(
-        'bar' => 1,
-    ));
+    if (PHP_MAJOR_VERSION < 7) {
+        $logger('info', 'lorem ipsum', array(
+            'foo' => true,
+        ));
+        $logger('debug', 'dolor sit amet', array(
+            'bar' => 1,
+        ));
+    } else {
+        $logger->info('lorem ipsum', array(
+            'foo' => true,
+        ));
+        $logger->debug('dolor sit amet', array(
+            'bar' => 1,
+        ));
+    }
 });
 
 ?>

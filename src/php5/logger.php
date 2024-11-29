@@ -26,7 +26,7 @@ $deps['logger'] = function () {
      * @param array $context
      */
     return function ($level, $message, $context = array()) use ($levels) {
-        $level = strtolower($level);
+        $level = mb_strtolower($level);
 
         assert(array_key_exists($level, $levels));
         assert(is_string($message));

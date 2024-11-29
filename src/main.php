@@ -41,6 +41,16 @@ return function () {
 
     ### PHP 5 FUNCTIONS PLACEHOLDER ###
 
+    // hack used to include PHP 7 enhancements and features
+    // without breaking changes nor new files
+    // https://3v4l.org/mArem
+    if (PHP_MAJOR_VERSION >= 7) {
+        $handler = fopen(__FILE__, 'r');
+        fseek($handler, __COMPILER_HALT_OFFSET__);
+        eval(stream_get_contents($handler));
+        fclose($handler);
+    }
+
     // used to shorten code
     $args = func_get_args();
 
@@ -57,7 +67,7 @@ return function () {
                 case 'env':
                 case 'request':
                 case 'server':
-                    return $deps['utils:double-access']($GLOBALS['_'.strtoupper($args[0])]);
+                    return $deps['utils:double-access']($GLOBALS['_'.mb_strtoupper($args[0])]);
                 case 'router:not-found':
                     if (!empty($_SERVER['REQUEST_URI'])) {
                         return '(?!('.implode('|', $matches).')$).*';
@@ -196,3 +206,9 @@ return function () {
     invoke_deploy:
     return call_user_func_array($deploy, func_get_args());
 };
+
+__halt_compiler();
+
+// PHP 7 features, use `$deps` for dependency injection
+
+### PHP 7 FEATURES PLACEHOLDER ###
