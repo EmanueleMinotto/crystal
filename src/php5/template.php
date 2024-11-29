@@ -16,6 +16,7 @@ $deps['template'] = function () {
         ob_start();
 
         extract($data);
+
         require $filename;
 
         return ob_get_clean();

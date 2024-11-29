@@ -17,6 +17,7 @@ function replace_placeholders($content)
 
     $php5files = glob(__DIR__.'/php5/*.php');
     $raw = '';
+
     foreach ($php5files as $php5file) {
         $raw .= PHP_EOL . get_php_only($php5file);
     }
@@ -25,11 +26,16 @@ function replace_placeholders($content)
 
     $php5files = glob(__DIR__.'/php7/*.php');
     $raw = '';
+
     foreach ($php5files as $php5file) {
         $raw .= PHP_EOL . get_php_only($php5file);
     }
 
     $content = str_replace('### PHP 7 FEATURES PLACEHOLDER ###', $raw, $content);
+
+    for ($i = 0; $i < 5; $i++) {
+        $content = str_replace("\n\n\n", "\n\n", $content);
+    }
 
     return $content;
 }

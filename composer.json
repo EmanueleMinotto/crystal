@@ -4,7 +4,7 @@
         "phpunit/phpunit": "*"
     },
     "scripts": {
-        "build": "php src/build.php && php-cs-fixer fix --quiet",
+        "build": "php src/build.php && php-cs-fixer fix --allow-risky=yes --quiet",
         "test": "phpunit tests"
     }
 }

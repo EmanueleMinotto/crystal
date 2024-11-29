@@ -68,10 +68,12 @@ return function () {
                 case 'request':
                 case 'server':
                     return $deps['utils:double-access']($GLOBALS['_'.mb_strtoupper($args[0])]);
+
                 case 'router:not-found':
                     if (!empty($_SERVER['REQUEST_URI'])) {
                         return '(?!('.implode('|', $matches).')$).*';
                     }
+
                     break;
             }
 
@@ -83,7 +85,9 @@ return function () {
                     ? call_user_func($deps[$args[0]])
                     : $deps[$args[0]];
             }
+
             break;
+
         case 2:
             // using $GLOBALS as a container, variable names must match
             // this regular expression
@@ -92,6 +96,7 @@ return function () {
                 // functions used for Dependency Injection and settings
                 return $deps[$args[0]] = $args[1];
             }
+
             break;
     }
 
@@ -131,6 +136,7 @@ return function () {
             $argv = $GLOBALS['argv'];
 
             $argv[0] = $cb;
+
             // register_shutdown_function is used to call added functions when script ends
             // http://it2.php.net/manual/en/function.register-shutdown-function.php
             return call_user_func_array('register_shutdown_function', array_values($argv));
@@ -186,10 +192,12 @@ return function () {
                 ? new ReflectionFunction($cb)
                 : new ReflectionMethod($cb);
             $params = array();
+
             foreach ($reflector->getParameters() as $parameter) {
                 // reset to prevent key value
                 $params[$parameter->name] = null;
             }
+
             // user can use named parameters only if explicitly requested
             if (array_intersect(array_keys($params), array_keys($submatches))) {
                 $submatches = array_merge($params, $submatches);

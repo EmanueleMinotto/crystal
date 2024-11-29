@@ -47,6 +47,7 @@ spl_autoload_register(function ($class) {
             }
         }
     }
+
     // spl_autoload_register returns bool
     // http://it2.php.net/manual/en/function.spl-autoload-register.php
     return false;

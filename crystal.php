@@ -47,6 +47,7 @@ spl_autoload_register(function ($class) {
             }
         }
     }
+
     // spl_autoload_register returns bool
     // http://it2.php.net/manual/en/function.spl-autoload-register.php
     return false;
@@ -115,7 +116,7 @@ return function () {
          * @param array $context
          */
         return function ($level, $message, $context = array()) use ($levels) {
-            $level = strtolower($level);
+            $level = mb_strtolower($level);
 
             assert(array_key_exists($level, $levels));
             assert(is_string($message));
@@ -141,6 +142,7 @@ return function () {
             ob_start();
 
             extract($data);
+
             require $filename;
 
             return ob_get_clean();
@@ -191,6 +193,16 @@ return function () {
         };
     };
 
+    // hack used to include PHP 7 enhancements and features
+    // without breaking changes nor new files
+    // https://3v4l.org/mArem
+    if (PHP_MAJOR_VERSION >= 7) {
+        $handler = fopen(__FILE__, 'r');
+        fseek($handler, __COMPILER_HALT_OFFSET__);
+        eval(stream_get_contents($handler));
+        fclose($handler);
+    }
+
     // used to shorten code
     $args = func_get_args();
 
@@ -207,11 +219,13 @@ return function () {
                 case 'env':
                 case 'request':
                 case 'server':
-                    return $deps['utils:double-access']($GLOBALS['_'.strtoupper($args[0])]);
+                    return $deps['utils:double-access']($GLOBALS['_'.mb_strtoupper($args[0])]);
+
                 case 'router:not-found':
                     if (!empty($_SERVER['REQUEST_URI'])) {
                         return '(?!('.implode('|', $matches).')$).*';
                     }
+
                     break;
             }
 
@@ -223,7 +237,9 @@ return function () {
                     ? call_user_func($deps[$args[0]])
                     : $deps[$args[0]];
             }
+
             break;
+
         case 2:
             // using $GLOBALS as a container, variable names must match
             // this regular expression
@@ -232,6 +248,7 @@ return function () {
                 // functions used for Dependency Injection and settings
                 return $deps[$args[0]] = $args[1];
             }
+
             break;
     }
 
@@ -271,6 +288,7 @@ return function () {
             $argv = $GLOBALS['argv'];
 
             $argv[0] = $cb;
+
             // register_shutdown_function is used to call added functions when script ends
             // http://it2.php.net/manual/en/function.register-shutdown-function.php
             return call_user_func_array('register_shutdown_function', array_values($argv));
@@ -326,10 +344,12 @@ return function () {
                 ? new ReflectionFunction($cb)
                 : new ReflectionMethod($cb);
             $params = array();
+
             foreach ($reflector->getParameters() as $parameter) {
                 // reset to prevent key value
                 $params[$parameter->name] = null;
             }
+
             // user can use named parameters only if explicitly requested
             if (array_intersect(array_keys($params), array_keys($submatches))) {
                 $submatches = array_merge($params, $submatches);
@@ -346,3 +366,150 @@ return function () {
     invoke_deploy:
     return call_user_func_array($deploy, func_get_args());
 };
+
+__halt_compiler();
+
+// PHP 7 features, use `$deps` for dependency injection
+
+// logger based on PSR-3
+// https://www.php-fig.org/psr/psr-3/
+$deps['logger'] = new class () {
+    private $logLevels = array(
+        'emerg' => LOG_EMERG,
+        'emergency' => LOG_EMERG,
+        'alert' => LOG_ALERT,
+        'crit' => LOG_CRIT,
+        'critical' => LOG_CRIT,
+        'err' => LOG_ERR,
+        'error' => LOG_ERR,
+        'warn' => LOG_WARNING,
+        'warning' => LOG_WARNING,
+        'notice' => LOG_NOTICE,
+        'info' => LOG_INFO,
+        'debug' => LOG_DEBUG,
+    );
+
+    /**
+     * System is unusable.
+     *
+     * @param string $message
+     * @param array $context
+     * @return void
+     */
+    public function emergency($message, $context = array())
+    {
+        $this->log('emergency', $message, $context);
+    }
+
+    /**
+     * Action must be taken immediately.
+     *
+     * Example: Entire website down, database unavailable, etc. This should
+     * trigger the SMS alerts and wake you up.
+     *
+     * @param string $message
+     * @param array $context
+     * @return void
+     */
+    public function alert($message, $context = array())
+    {
+        $this->log('alert', $message, $context);
+    }
+
+    /**
+     * Critical conditions.
+     *
+     * Example: Application component unavailable, unexpected exception.
+     *
+     * @param string $message
+     * @param array $context
+     * @return void
+     */
+    public function critical($message, $context = array())
+    {
+        $this->log('critical', $message, $context);
+    }
+
+    /**
+     * Runtime errors that do not require immediate action but should typically
+     * be logged and monitored.
+     *
+     * @param string $message
+     * @param array $context
+     * @return void
+     */
+    public function error($message, $context = array())
+    {
+        $this->log('error', $message, $context);
+    }
+
+    /**
+     * Exceptional occurrences that are not errors.
+     *
+     * Example: Use of deprecated APIs, poor use of an API, undesirable things
+     * that are not necessarily wrong.
+     *
+     * @param string $message
+     * @param array $context
+     * @return void
+     */
+    public function warning($message, $context = array())
+    {
+        $this->log('warning', $message, $context);
+    }
+
+    /**
+     * Normal but significant events.
+     *
+     * @param string $message
+     * @param array $context
+     * @return void
+     */
+    public function notice($message, $context = array())
+    {
+        $this->log('notice', $message, $context);
+    }
+
+    /**
+     * Interesting events.
+     *
+     * Example: User logs in, SQL logs.
+     *
+     * @param string $message
+     * @param array $context
+     * @return void
+     */
+    public function info($message, $context = array())
+    {
+        $this->log('info', $message, $context);
+    }
+
+    /**
+     * Detailed debug information.
+     *
+     * @param string $message
+     * @param array $context
+     * @return void
+     */
+    public function debug($message, $context = array())
+    {
+        $this->log('debug', $message, $context);
+    }
+
+    /**
+     * Logs with an arbitrary level.
+     *
+     * @param mixed $level
+     * @param string $message
+     * @param array $context
+     * @return void
+     */
+    public function log($level, $message, $context = array())
+    {
+        syslog(
+            $this->logLevels[mb_strtolower($level)] ?? $level,
+            $message.' '.json_encode($context)
+        );
+    }
+};
+
