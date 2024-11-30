@@ -381,6 +381,9 @@ __halt_compiler();
 // logger based on PSR-3
 // https://www.php-fig.org/psr/psr-3/
 $deps['logger'] = new class () {
+    /**
+     * Possible level values.
+     */
     private $logLevels = array(
         'emerg' => LOG_EMERG,
         'emergency' => LOG_EMERG,
@@ -397,10 +400,76 @@ $deps['logger'] = new class () {
     );
 
     /**
+     * Custom logger implementation, if defined.
+     *
+     * @var callable|null
+     */
+    private $implementation;
+
+    /**
+     * Additional context for every message.
+     *
+     * @var array
+     */
+    private $context = array();
+
+    /**
+     * Add shared context value.
+     *
+     * @param string $key
+     * @param mixed $value
+     */
+    public function addContext(string $key, $value)
+    {
+        $this->context[$key] = $value;
+    }
+
+    /**
+     * Set all the shared context.
+     *
+     * @param array $context
+     */
+    public function setContext(array $context)
+    {
+        $this->context = $context;
+    }
+
+    /**
+     * Get all the shared context.
+     *
+     * @return array
+     */
+    public function getContext(): array
+    {
+        return $this->context;
+    }
+
+    /**
+     * Unset all the values in the shared context.
+     */
+    public function resetContext()
+    {
+        $this->context = array();
+    }
+
+    /**
+     * Remove specific keys from the shared context.
+     *
+     * @param string $keys
+     */
+    public function unsetContext(string ...$keys)
+    {
+        foreach ($keys as $key) {
+            unset($this->context[$key]);
+        }
+    }
+
+    /**
      * System is unusable.
      *
      * @param string $message
      * @param array $context
+     *
      * @return void
      */
     public function emergency($message, $context = array())
@@ -416,6 +485,7 @@ $deps['logger'] = new class () {
      *
      * @param string $message
      * @param array $context
+     *
      * @return void
      */
     public function alert($message, $context = array())
@@ -430,6 +500,7 @@ $deps['logger'] = new class () {
      *
      * @param string $message
      * @param array $context
+     *
      * @return void
      */
     public function critical($message, $context = array())
@@ -443,6 +514,7 @@ $deps['logger'] = new class () {
      *
      * @param string $message
      * @param array $context
+     *
      * @return void
      */
     public function error($message, $context = array())
@@ -458,6 +530,7 @@ $deps['logger'] = new class () {
      *
      * @param string $message
      * @param array $context
+     *
      * @return void
      */
     public function warning($message, $context = array())
@@ -470,6 +543,7 @@ $deps['logger'] = new class () {
      *
      * @param string $message
      * @param array $context
+     *
      * @return void
      */
     public function notice($message, $context = array())
@@ -484,6 +558,7 @@ $deps['logger'] = new class () {
      *
      * @param string $message
      * @param array $context
+     *
      * @return void
      */
     public function info($message, $context = array())
@@ -496,6 +571,7 @@ $deps['logger'] = new class () {
      *
      * @param string $message
      * @param array $context
+     *
      * @return void
      */
     public function debug($message, $context = array())
@@ -509,14 +585,43 @@ $deps['logger'] = new class () {
      * @param mixed $level
      * @param string $message
      * @param array $context
+     *
      * @return void
      */
     public function log($level, $message, $context = array())
     {
+        $context = array_merge($this->context, $context);
+
+        if (!empty($this->implementation)) {
+            return call_user_func_array($this->implementation, array(
+                $level,
+                $message,
+                $context
+            ));
+        }
+
         syslog(
             $this->logLevels[mb_strtolower($level)] ?? $level,
             $message.' '.json_encode($context)
         );
+    }
+
+    /**
+     * Sets a custom implementation instead of the default syslog.
+     *
+     * @param callable $implementation
+     */
+    public function setImplementation(callable $implementation)
+    {
+        $this->implementation = $implementation;
+    }
+
+    /**
+     * Resets the implementation to the default one (using syslog).
+     */
+    public function resetImplementation()
+    {
+        $this->implementation = null;
     }
 };
 
