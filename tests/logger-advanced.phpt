@@ -25,8 +25,9 @@ $mf(function () use ($mf) {
     $logger->info('lorem ipsum', array(
         'foo' => true,
     ));
-    $logger->debug('dolor sit amet', array(
+    $logger->debug('dolor {placeholder} amet', array(
         'bar' => 1,
+        'placeholder' => 'sit',
     ));
     $logger->emergency('consectetur adipisci elit');
 });
@@ -34,5 +35,5 @@ $mf(function () use ($mf) {
 ?>
 --EXPECT--
 info: lorem ipsum - {"bar":"test","foo":true}
-debug: dolor sit amet - {"bar":1}
+debug: dolor sit amet - {"bar":1,"placeholder":"sit"}
 emergency: consectetur adipisci elit - {"bar":"test"}

@@ -18,15 +18,17 @@ $mf(function () use ($mf) {
         $logger('info', 'lorem ipsum', array(
             'foo' => true,
         ));
-        $logger('debug', 'dolor sit amet', array(
+        $logger('debug', 'dolor {placeholder} amet', array(
             'bar' => 1,
+            'placeholder' => 'sit',
         ));
     } else {
         $logger->info('lorem ipsum', array(
             'foo' => true,
         ));
-        $logger->debug('dolor sit amet', array(
+        $logger->debug('dolor sit {placeholder}', array(
             'bar' => 1,
+            'placeholder' => 'amet',
         ));
     }
 

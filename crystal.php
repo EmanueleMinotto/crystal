@@ -107,6 +107,24 @@ return function () {
         );
 
         /**
+         * Interpolates context values into the message placeholders.
+         */
+        $interpolate = function ($message, $context = array()) {
+            // build a replacement array with braces around the context keys
+            $replace = array();
+
+            foreach ($context as $key => $val) {
+                // check that the value can be cast to string
+                if (!is_array($val) && (!is_object($val) || method_exists($val, '__toString'))) {
+                    $replace['{' . $key . '}'] = $val;
+                }
+            }
+
+            // interpolate replacement values into the message and return
+            return strtr($message, $replace);
+        };
+
+        /**
          * Generic logger using `syslog` for tracking, use `openlog` to change its behaviour.
          *
          * @link https://www.php.net/manual/en/function.syslog.php
@@ -115,14 +133,14 @@ return function () {
          * @param string $message
          * @param array $context
          */
-        return function ($level, $message, $context = array()) use ($levels) {
+        return function ($level, $message, $context = array()) use ($interpolate, $levels) {
             $level = mb_strtolower($level);
 
             assert(array_key_exists($level, $levels));
             assert(is_string($message));
             assert(is_array($context));
 
-            syslog($levels[$level], $message.' '.json_encode($context));
+            syslog($levels[$level], $interpolate($message).' '.json_encode($context));
         };
     };
 
@@ -413,6 +431,22 @@ $deps['logger'] = new class () {
      */
     private $context = array();
 
+    private function interpolate($message, array $context = array())
+    {
+        // build a replacement array with braces around the context keys
+        $replace = array();
+
+        foreach ($context as $key => $val) {
+            // check that the value can be cast to string
+            if (!is_array($val) && (!is_object($val) || method_exists($val, '__toString'))) {
+                $replace['{' . $key . '}'] = $val;
+            }
+        }
+
+        // interpolate replacement values into the message and return
+        return strtr($message, $replace);
+    }
+
     /**
      * Add shared context value.
      *
@@ -591,6 +625,7 @@ $deps['logger'] = new class () {
     public function log($level, $message, $context = array())
     {
         $context = array_merge($this->context, $context);
+        $message = $this->interpolate($message, $context);
 
         if (!empty($this->implementation)) {
             return call_user_func_array($this->implementation, array(
