@@ -1,5 +1,11 @@
 --TEST--
 Logger
+--DESCRIPTION--
+Verify that logger works for both PHP 5.* and PHP 7+ versions,
+usage is similar.
+
+For the "DIGEST-MD5 common mech free" message see
+https://bugs.launchpad.net/ubuntu/+source/cyrus-sasl2/+bug/827151
 --FILE--
 <?php
 
@@ -30,4 +36,4 @@ $mf(function () use ($mf) {
 ?>
 --EXPECTREGEX--
 .+  \[\d+\] <Info>: lorem ipsum \{\"foo\":true\}
-.+  \[\d+\] <Debug>: dolor sit amet \{\"bar\":1\}
+.+  \[\d+\] <Debug>: dolor sit amet \{\"bar\":1\}(\nDIGEST-MD5 common mech free)?
