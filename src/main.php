@@ -2,6 +2,8 @@
 
 ### AUTOLOADER ###
 
+### POLYFILLS ###
+
 /**
  * A PHP (5.3+) microframework based on anonymous functions.
  */

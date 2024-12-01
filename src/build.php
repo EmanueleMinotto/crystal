@@ -15,6 +15,15 @@ function replace_placeholders($content)
         $content
     );
 
+    $polyfillFiles = glob(__DIR__.'/polyfills/*.php');
+    $raw = '';
+
+    foreach ($polyfillFiles as $polyfillFile) {
+        $raw .= PHP_EOL . get_php_only($polyfillFile);
+    }
+
+    $content = str_replace('### POLYFILLS ###', $raw, $content);
+
     $php5files = glob(__DIR__.'/php5/*.php');
     $raw = '';
 

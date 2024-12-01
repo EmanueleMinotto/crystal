@@ -53,6 +53,16 @@ spl_autoload_register(function ($class) {
     return false;
 });
 
+if (!interface_exists('JsonSerializable')) {
+    /**
+     * @link https://www.php.net/manual/en/class.jsonserializable.php
+     */
+    interface JsonSerializable
+    {
+        public function jsonSerialize();
+    }
+}
+
 /**
  * A PHP (5.3+) microframework based on anonymous functions.
  */
