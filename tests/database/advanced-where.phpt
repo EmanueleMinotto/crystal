@@ -1,5 +1,13 @@
 --TEST--
 Advanced usage of the where options.
+--SKIPIF--
+<?php
+
+if (PHP_MAJOR_VERSION < 7) {
+    die('Skip: PHP 7+ is required');
+}
+
+?>
 --FILE--
 <?php
 
@@ -28,7 +36,7 @@ $mf(function () use ($mf) {
     echo "select by column and value: " . json_encode($db->select('crystal_test', '*', [
         'v1' => 'ii',
     ]))."\n";
-    echo "select by custom query: " . json_encode($db->select('crystal_test', '*', [
+    echo "select by custom query: " . json_encode($db->select('crystal_test', null, [
         'v1 = ? OR v2 = ?' => ['ii', 'a'],
     ]))."\n";
     echo "select by multiple custom conditions: " . json_encode($db->select('crystal_test', '*', [
@@ -42,11 +50,11 @@ $mf(function () use ($mf) {
 
 ?>
 --EXPECT--
-select all rows: [{"id":1,"v1":"i","v2":"a"},{"id":2,"v1":"ii","v2":"aa"},{"id":3,"v1":"iii","v2":"aaa"}]
-select only identifiers: [{"id":1},{"id":2},{"id":3}]
+select all rows: [{"id":"1","v1":"i","v2":"a"},{"id":"2","v1":"ii","v2":"aa"},{"id":"3","v1":"iii","v2":"aaa"}]
+select only identifiers: [{"id":"1"},{"id":"2"},{"id":"3"}]
 select only specific columns: [{"v1":"i","v2":"a"},{"v1":"ii","v2":"aa"},{"v1":"iii","v2":"aaa"}]
-select by column and value: [{"id":2,"v1":"ii","v2":"aa"}]
-select by custom query: [{"id":1,"v1":"i","v2":"a"},{"id":2,"v1":"ii","v2":"aa"}]
-select by multiple custom conditions: [{"id":1,"v1":"i","v2":"a"}]
-select sorted: [{"id":3,"v1":"iii"},{"id":2,"v1":"ii"},{"id":1,"v1":"i"}]
-select limited: [{"id":1,"v1":"i"},{"id":2,"v1":"ii"}]
+select by column and value: [{"id":"2","v1":"ii","v2":"aa"}]
+select by custom query: [{"id":"1","v1":"i","v2":"a"},{"id":"2","v1":"ii","v2":"aa"}]
+select by multiple custom conditions: [{"id":"1","v1":"i","v2":"a"}]
+select sorted: [{"id":"3","v1":"iii"},{"id":"2","v1":"ii"},{"id":"1","v1":"i"}]
+select limited: [{"id":"1","v1":"i"},{"id":"2","v1":"ii"}]

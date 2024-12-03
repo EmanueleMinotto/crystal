@@ -498,6 +498,7 @@ $deps['database'] = new class () {
     {
         static::$pdo = $pdo;
         static::$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        static::$pdo->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
     }
 
     /**
