@@ -5,7 +5,7 @@ $deps['template'] = function () {
      * Simple template engine to manipulate and render .php files.
      *
      * @param string $filename
-     * @param array $data
+     * @param array  $data
      *
      * @return string
      */

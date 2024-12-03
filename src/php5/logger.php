@@ -41,7 +41,7 @@ $deps['logger'] = function () {
      *
      * @param string $level
      * @param string $message
-     * @param array $context
+     * @param array  $context
      */
     return function ($level, $message, $context = array()) use ($interpolate, $levels) {
         $level = mb_strtolower($level);

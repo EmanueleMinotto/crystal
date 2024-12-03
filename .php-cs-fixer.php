@@ -19,7 +19,8 @@ return (new PhpCsFixer\Config())
         'mb_str_functions' => true,
         'no_extra_blank_lines' => [
             'tokens' => ['attribute', 'break', 'case', 'continue', 'curly_brace_block', 'default', 'extra', 'parenthesis_brace_block', 'return', 'square_brace_block', 'switch', 'throw', 'use', 'use_trait'],
-        ]
+        ],
+        'phpdoc_align' => true,
     ])
     ->setFinder($finder)
 ;
