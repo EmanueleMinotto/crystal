@@ -160,7 +160,7 @@ return function () {
          *
          * @param string $level
          * @param string $message
-         * @param array $context
+         * @param array  $context
          */
         return function ($level, $message, $context = array()) use ($interpolate, $levels) {
             $level = mb_strtolower($level);
@@ -178,7 +178,7 @@ return function () {
          * Simple template engine to manipulate and render .php files.
          *
          * @param string $filename
-         * @param array $data
+         * @param array  $data
          *
          * @return string
          */
@@ -538,7 +538,7 @@ $deps['logger'] = new class () {
      * Add shared context value.
      *
      * @param string $key
-     * @param mixed $value
+     * @param mixed  $value
      */
     public function addContext(string $key, $value)
     {
@@ -589,7 +589,7 @@ $deps['logger'] = new class () {
      * System is unusable.
      *
      * @param string $message
-     * @param array $context
+     * @param array  $context
      *
      * @return void
      */
@@ -605,7 +605,7 @@ $deps['logger'] = new class () {
      * trigger the SMS alerts and wake you up.
      *
      * @param string $message
-     * @param array $context
+     * @param array  $context
      *
      * @return void
      */
@@ -620,7 +620,7 @@ $deps['logger'] = new class () {
      * Example: Application component unavailable, unexpected exception.
      *
      * @param string $message
-     * @param array $context
+     * @param array  $context
      *
      * @return void
      */
@@ -634,7 +634,7 @@ $deps['logger'] = new class () {
      * be logged and monitored.
      *
      * @param string $message
-     * @param array $context
+     * @param array  $context
      *
      * @return void
      */
@@ -650,7 +650,7 @@ $deps['logger'] = new class () {
      * that are not necessarily wrong.
      *
      * @param string $message
-     * @param array $context
+     * @param array  $context
      *
      * @return void
      */
@@ -663,7 +663,7 @@ $deps['logger'] = new class () {
      * Normal but significant events.
      *
      * @param string $message
-     * @param array $context
+     * @param array  $context
      *
      * @return void
      */
@@ -678,7 +678,7 @@ $deps['logger'] = new class () {
      * Example: User logs in, SQL logs.
      *
      * @param string $message
-     * @param array $context
+     * @param array  $context
      *
      * @return void
      */
@@ -691,7 +691,7 @@ $deps['logger'] = new class () {
      * Detailed debug information.
      *
      * @param string $message
-     * @param array $context
+     * @param array  $context
      *
      * @return void
      */
@@ -703,9 +703,9 @@ $deps['logger'] = new class () {
     /**
      * Logs with an arbitrary level.
      *
-     * @param mixed $level
+     * @param mixed  $level
      * @param string $message
-     * @param array $context
+     * @param array  $context
      *
      * @return void
      */
