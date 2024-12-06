@@ -59,6 +59,6 @@ $deps['listener'] = new class () {
             return $event->getEventName();
         }
 
-        return $event::class;
+        return get_class($event);
     }
 };
