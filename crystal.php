@@ -734,7 +734,7 @@ $deps['listener'] = new class () {
      *
      * @return object The Event that was passed, now modified by listeners.
      */
-    public function dispatch(object $event)
+    public function dispatch($event)
     {
         $eventName = $this->getEventName($event);
         $listeners = $this->getListenersForEvent($event);
@@ -746,18 +746,18 @@ $deps['listener'] = new class () {
         return $event;
     }
 
-    public function on(string $event, callable $callback)
+    public function on(string $eventName, callable $callback)
     {
-        if (empty($this->listeners[$event])) {
-            $this->listeners[$event] = array();
+        if (empty($this->listeners[$eventName])) {
+            $this->listeners[$eventName] = array();
         }
 
-        $this->listeners[$event][] = $callback;
+        $this->listeners[$eventName][] = $callback;
     }
 
-    public function off(string $event)
+    public function off(string $eventName)
     {
-        $this->listeners[$event] = array();
+        $this->listeners[$eventName] = array();
     }
 
     /**
@@ -765,13 +765,17 @@ $deps['listener'] = new class () {
      *
      * @return iterable<callable> An iterable (array, iterator, or generator) of callables. Each callable MUST be type-compatible with $event.
      */
-    public function getListenersForEvent(object $event)
+    public function getListenersForEvent($event)
     {
         return $this->listeners[$this->getEventName($event)] ?? array();
     }
 
-    private function getEventName(object $event)
+    private function getEventName($event)
     {
+        if (!is_object($event)) {
+            return $event;
+        }
+
         if (method_exists($event, 'getCrystalEventName')) {
             return $event->getCrystalEventName();
         }
