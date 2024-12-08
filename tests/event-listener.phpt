@@ -20,6 +20,9 @@ class Event {
 $mf(function () use ($mf) {
     $listener = $mf('listener');
 
+    $listener->on('test', function () { echo "test1\n"; });
+    $listener->on('test', function () { echo "test2\n"; });
+
     $listener->on('Event', function ($event) {
         echo "dispatching\n";
 
@@ -32,12 +35,19 @@ $mf(function () use ($mf) {
     $event = $listener->dispatch($event);
 
     var_dump($event);
+
+    $listener->dispatch('test');
+
+    $listener->off('test');
+    $listener->dispatch('test');
 });
 
 ?>
 --EXPECT--
 dispatching
-object(Event)#22 (1) {
+object(Event)#24 (1) {
   ["foo"]=>
   string(3) "bar"
 }
+test1
+test2
