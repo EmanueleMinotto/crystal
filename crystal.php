@@ -456,11 +456,8 @@ $deps['container'] = new class ($deps) {
      */
     public function get(string $id)
     {
-        if (empty(self::$deps[$id])) {
-            $exception = new class () extends \Exception {
-            };
-
-            throw $exception;
+        if (!$this->has($id)) {
+            throw new Exception(sprintf('Entry "%s" not found.', $id));
         }
 
         return self::$deps[$id];
