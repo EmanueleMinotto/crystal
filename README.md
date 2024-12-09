@@ -24,6 +24,7 @@ $mf('/', function () {
 -   a [Template Engine](https://github.com/EmanueleMinotto/crystal/wiki/Template-Engine)
 -   a [Logger](https://github.com/EmanueleMinotto/crystal/wiki/Logger) available from PHP 5, based on [PSR-3](https://www.php-fig.org/psr/psr-3/)
 -   a [Database](https://github.com/EmanueleMinotto/crystal/wiki/Database) interaction system
+-   an [Event Listener](https://github.com/EmanueleMinotto/crystal/wiki/Event-Listener) to listen and dispatch events
 -   **no external dependencies, just a single PHP file!**
 
 ## Documentation
