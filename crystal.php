@@ -448,19 +448,24 @@ $deps['container'] = new class ($deps) {
     /**
      * Finds an entry of the container by its identifier and returns it.
      *
-     * @param string $id Identifier of the entry to look for.
+     * @param string $id   Identifier of the entry to look for.
+     * @param mixed  $args Optional arguments for the service factory.
      *
      * @throws Exception No entry was found for **this** identifier.
      *
      * @return mixed Entry.
      */
-    public function get(string $id)
+    public function get(string $id, ...$args)
     {
         if (!$this->has($id)) {
             throw new Exception(sprintf('Entry "%s" not found.', $id));
         }
 
-        return self::$deps[$id];
+        $service = self::$deps[$id];
+
+        return is_callable($service)
+            ? call_user_func_array($service, $args)
+            : $service;
     }
 
     /**
@@ -476,7 +481,7 @@ $deps['container'] = new class ($deps) {
      */
     public function has(string $id): bool
     {
-        return !empty(self::$deps[$id]);
+        return isset(self::$deps[$id]);
     }
 };
 
