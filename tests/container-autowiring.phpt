@@ -39,9 +39,9 @@ $mf(function () use ($mf) {
 
 ?>
 --EXPECT--
-object(Test\Bar)#15 (1) {
+object(Test\Bar)#14 (1) {
   ["foo":"Test\Bar":private]=>
-  object(Test\Foo)#16 (1) {
+  object(Test\Foo)#15 (1) {
     ["lorem":"Test\Foo":private]=>
     string(5) "ipsum"
   }

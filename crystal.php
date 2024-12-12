@@ -545,7 +545,7 @@ $deps['container'] = $deps['container'] ?? new class ($deps) {
         $resolvedParams = array();
 
         foreach ($parameters as $parameter) {
-            $type = $parameter->getType();
+            $type = (string) $parameter->getType();
             $name = $parameter->name;
 
             if (isset($args[$name])) {
@@ -554,8 +554,8 @@ $deps['container'] = $deps['container'] ?? new class ($deps) {
                 continue;
             }
 
-            if ($type instanceof ReflectionNamedType && !$type->isBuiltin()) {
-                $resolvedParams[] = $this->make($type->getName());
+            if ($this->has($type) || class_exists($type)) {
+                $resolvedParams[] = $this->make($type);
 
                 continue;
             }
