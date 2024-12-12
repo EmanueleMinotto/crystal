@@ -483,6 +483,60 @@ $deps['container'] = new class ($deps) {
     {
         return isset(self::$deps[$id]);
     }
+
+    public function set(string $id, $value)
+    {
+        self::$deps[$id] = $value;
+    }
+
+    public function make(string $fqcn, ...$args)
+    {
+        if ($this->has($fqcn)) {
+            return $this->get($fqcn, ...$args);
+        }
+
+        if (!class_exists($fqcn)) {
+            throw new Exception(sprintf('Class "%s" does not exist.', $fqcn));
+        }
+
+        $reflectionClass = new ReflectionClass($fqcn);
+        $constructor = $reflectionClass->getConstructor();
+
+        if (empty($constructor)) {
+            return self::$deps[$fqcn] = $reflectionClass->newInstance();
+        }
+
+        $parameters = $constructor->getParameters();
+
+        if (empty($parameters)) {
+            return self::$deps[$fqcn] = $reflectionClass->newInstance();
+        }
+
+        $resolvedParams = array();
+
+        foreach ($parameters as $parameter) {
+            $type = $parameter->getType();
+            $name = $parameter->name;
+
+            if (isset($args[$name])) {
+                $resolvedParams[] = $args[$name];
+
+                continue;
+            }
+
+            if ($type instanceof ReflectionNamedType && !$type->isBuiltin()) {
+                $resolvedParams[] = $this->make($type->getName());
+
+                continue;
+            }
+
+            if ($parameter->isOptional()) {
+                $parameter->getDefaultValue();
+            }
+        }
+
+        return self::$deps[$fqcn] = $reflectionClass->newInstanceArgs($resolvedParams);
+    }
 };
 
 $deps['database'] = new class () {
