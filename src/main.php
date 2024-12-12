@@ -83,6 +83,11 @@ return function () {
             // this regular expression
             // http://www.php.net/manual/en/language.variables.basics.php
             if (is_scalar($args[0]) && preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*#', $args[0])) {
+                if (!empty($deps['container']) && is_object($deps['container'])) {
+                    // if there's a container, use it
+                    return $deps['container']->get($args[0]);
+                }
+
                 return is_callable($deps[$args[0]])
                     ? call_user_func($deps[$args[0]])
                     : $deps[$args[0]];
@@ -96,6 +101,13 @@ return function () {
             // http://www.php.net/manual/en/language.variables.basics.php
             if (is_scalar($args[0]) && preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*#', $args[0])) {
                 // functions used for Dependency Injection and settings
+                if (!empty($deps['container']) && is_object($deps['container'])) {
+                    // if there's a container, use it
+                    $deps['container']->set($args[0], $args[1]);
+
+                    return;
+                }
+
                 return $deps[$args[0]] = $args[1];
             }
 

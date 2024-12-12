@@ -287,6 +287,11 @@ return function () {
             // this regular expression
             // http://www.php.net/manual/en/language.variables.basics.php
             if (is_scalar($args[0]) && preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*#', $args[0])) {
+                if (!empty($deps['container']) && is_object($deps['container'])) {
+                    // if there's a container, use it
+                    return $deps['container']->get($args[0]);
+                }
+
                 return is_callable($deps[$args[0]])
                     ? call_user_func($deps[$args[0]])
                     : $deps[$args[0]];
@@ -300,6 +305,13 @@ return function () {
             // http://www.php.net/manual/en/language.variables.basics.php
             if (is_scalar($args[0]) && preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*#', $args[0])) {
                 // functions used for Dependency Injection and settings
+                if (!empty($deps['container']) && is_object($deps['container'])) {
+                    // if there's a container, use it
+                    $deps['container']->set($args[0], $args[1]);
+
+                    return;
+                }
+
                 return $deps[$args[0]] = $args[1];
             }
 
@@ -431,18 +443,23 @@ __halt_compiler();
  *
  * @link https://www.php-fig.org/psr/psr-11/
  */
-$deps['container'] = new class ($deps) {
+$deps['container'] = $deps['container'] ?? new class ($deps) {
     /**
      * @var array
      */
     private static $deps = array();
 
     /**
+     * @var string[]
+     */
+    private static $aliases = array();
+
+    /**
      * @param array $deps Dynamic set of dependencies.
      */
     public function __construct(array &$deps = array())
     {
-        self::$deps = $deps;
+        static::$deps = & $deps;
     }
 
     /**
@@ -461,7 +478,11 @@ $deps['container'] = new class ($deps) {
             throw new Exception(sprintf('Entry "%s" not found.', $id));
         }
 
-        $service = self::$deps[$id];
+        if (isset(static::$aliases[$id])) {
+            $id = static::$aliases[$id];
+        }
+
+        $service = static::$deps[$id];
 
         return is_callable($service)
             ? call_user_func_array($service, $args)
@@ -481,16 +502,25 @@ $deps['container'] = new class ($deps) {
      */
     public function has(string $id): bool
     {
-        return isset(self::$deps[$id]);
+        return isset(static::$deps[$id]) || isset(static::$aliases[$id]);
     }
 
     public function set(string $id, $value)
     {
-        self::$deps[$id] = $value;
+        static::$deps[$id] = $value;
+    }
+
+    public function alias(string $alias, string $id)
+    {
+        static::$aliases[$alias] = $id;
     }
 
     public function make(string $fqcn, ...$args)
     {
+        if (isset(static::$aliases[$fqcn])) {
+            $fqcn = static::$aliases[$fqcn];
+        }
+
         if ($this->has($fqcn)) {
             return $this->get($fqcn, ...$args);
         }
@@ -503,13 +533,13 @@ $deps['container'] = new class ($deps) {
         $constructor = $reflectionClass->getConstructor();
 
         if (empty($constructor)) {
-            return self::$deps[$fqcn] = $reflectionClass->newInstance();
+            return static::$deps[$fqcn] = $reflectionClass->newInstance();
         }
 
         $parameters = $constructor->getParameters();
 
         if (empty($parameters)) {
-            return self::$deps[$fqcn] = $reflectionClass->newInstance();
+            return static::$deps[$fqcn] = $reflectionClass->newInstance();
         }
 
         $resolvedParams = array();
@@ -535,7 +565,7 @@ $deps['container'] = new class ($deps) {
             }
         }
 
-        return self::$deps[$fqcn] = $reflectionClass->newInstanceArgs($resolvedParams);
+        return static::$deps[$fqcn] = $reflectionClass->newInstanceArgs($resolvedParams);
     }
 };
 

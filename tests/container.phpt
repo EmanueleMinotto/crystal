@@ -13,10 +13,6 @@ if (PHP_MAJOR_VERSION < 7) {
 
 $mf = require_once(__DIR__.'/../crystal.php');
 
-$_SERVER['REQUEST_METHOD'] = 'GET';
-$_SERVER['REQUEST_URI'] = '/';
-$_SERVER['SCRIPT_NAME'] = '/';
-
 $mf('pi', M_PI);
 $mf('test-service-constant', function ($value) {
     return function () use ($value) {
@@ -24,7 +20,7 @@ $mf('test-service-constant', function ($value) {
     };
 });
 
-$mf('/', function () use (&$mf) {
+$mf(function () use (&$mf) {
     $value = $mf('container')->get('pi');
     echo round($value, 5)."\n";
 
