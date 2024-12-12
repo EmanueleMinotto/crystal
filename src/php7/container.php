@@ -108,7 +108,11 @@ $deps['container'] = $deps['container'] ?? new class ($deps) {
         $resolvedParams = array();
 
         foreach ($parameters as $parameter) {
-            $type = (string) $parameter->getType();
+            $type = $parameter->getType();
+            $type = method_exists($type, 'getName')
+                ? $type->getName()
+                : (string) $type;
+
             $name = $parameter->name;
 
             if (isset($args[$name])) {
