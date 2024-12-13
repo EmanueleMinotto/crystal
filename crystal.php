@@ -546,9 +546,9 @@ $deps['container'] = $deps['container'] ?? new class ($deps) {
 
         foreach ($parameters as $parameter) {
             $type = $parameter->getType();
-                $type = method_exists($type, 'getName')
-                    ? $type->getName()
-                    : (string) $type;
+            $type = method_exists($type, 'getName')
+                ? $type->getName()
+                : (string) $type;
 
             $name = $parameter->name;
 
@@ -713,6 +713,62 @@ $deps['database'] = new class () {
         $stmt = static::$pdo->prepare(sprintf('DELETE FROM `%s` WHERE %s', $table, $where['sql']));
 
         return $stmt->execute($where['params']);
+    }
+
+    // === TRANSACTIONS ===
+    /**
+     * @link https://www.php.net/manual/en/pdo.begintransaction.php
+     */
+    public function beginTransaction()
+    {
+        return static::$pdo->beginTransaction();
+    }
+
+    /**
+     * @link https://www.php.net/manual/en/pdo.commit.php
+     */
+    public function commit()
+    {
+        return static::$pdo->commit();
+    }
+
+    /**
+     * @link https://www.php.net/manual/en/pdo.rollback.php
+     */
+    public function rollBack()
+    {
+        return static::$pdo->rollBack();
+    }
+
+    /**
+     * @link https://www.php.net/manual/en/pdo.intransaction.php
+     */
+    public function inTransaction()
+    {
+        return static::$pdo->inTransaction();
+    }
+
+    /**
+     * Grouping of database operations, this allows their executions
+     * without making changes if one of them fails.
+     *
+     * @return mixed The output of the callback.
+     */
+    public function transactional(callable $callback)
+    {
+        $this->beginTransaction();
+
+        try {
+            $output = $callback();
+
+            $this->commit();
+
+            return $output;
+        } catch (Throwable $exception) {
+            $this->rollBack();
+
+            throw $exception;
+        }
     }
 
     private function buildWhereCondition(): array
