@@ -25,6 +25,7 @@ $mf('/', function () {
 -   a [Logger](https://github.com/EmanueleMinotto/crystal/wiki/Logger) available from PHP 5, based on [PSR-3](https://www.php-fig.org/psr/psr-3/)
 -   a [Database](https://github.com/EmanueleMinotto/crystal/wiki/Database) interaction system
 -   an [Event Listener](https://github.com/EmanueleMinotto/crystal/wiki/Event-Listener) to listen and dispatch events
+-   a [Cache](https://github.com/EmanueleMinotto/crystal/wiki/Cache) system based on APCu
 -   **no external dependencies, just a single PHP file!**
 
 ## Documentation
