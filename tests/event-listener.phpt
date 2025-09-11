@@ -45,7 +45,7 @@ $mf(function () use ($mf) {
 ?>
 --EXPECT--
 dispatching
-object(Event)#14 (1) {
+object(Event)#15 (1) {
   ["foo"]=>
   string(3) "bar"
 }
