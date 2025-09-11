@@ -53,17 +53,46 @@ spl_autoload_register(function ($class) {
     return false;
 });
 
+/**
+ * Polyfill for the JsonSerializable interface (PHP < 5.4).
+ *
+ * Provides the JsonSerializable interface if it does not exist, allowing objects
+ * to define custom JSON serialization logic via the jsonSerialize() method.
+ *
+ * @see https://www.php.net/manual/en/class.jsonserializable.php
+ */
 if (!interface_exists('JsonSerializable')) {
     /**
-     * @link https://www.php.net/manual/en/class.jsonserializable.php
+     * Interface for classes that can be serialized to JSON.
+     *
+     * Implement this interface to define how your object should be converted to JSON.
      */
     interface JsonSerializable
     {
+        /**
+         * Returns data that can be serialized by json_encode().
+         *
+         * @return mixed Data for JSON serialization
+         */
         public function jsonSerialize();
     }
 }
 
+/**
+ * Polyfill for array_is_list() function (PHP < 8.1).
+ *
+ * Checks if an array's keys are consecutive numbers starting from 0.
+ * Returns true for empty arrays and arrays with sequential integer keys.
+ *
+ * @see https://www.php.net/manual/en/function.array-is-list.php
+ */
 if (!function_exists('array_is_list')) {
+    /**
+     * Determines if the given array is a list (sequential integer keys starting from 0).
+     *
+     * @param  array $array Array to check
+     * @return bool  True if array is a list, false otherwise
+     */
     function array_is_list($array)
     {
         if (array() === $array || $array === array_values($array)) {
@@ -79,6 +108,28 @@ if (!function_exists('array_is_list')) {
         }
 
         return true;
+    }
+}
+
+/**
+ * Polyfill for is_iterable() function (PHP < 7.1).
+ *
+ * Provides the is_iterable() function if it does not exist, allowing code to check
+ * if a variable is iterable (array or Traversable object).
+ *
+ * @see https://www.php.net/manual/en/function.is-iterable.php
+ */
+
+if (!function_exists('is_iterable')) {
+    /**
+     * Checks if the given variable is iterable (array or Traversable).
+     *
+     * @param  mixed $obj Variable to check
+     * @return bool  True if iterable, false otherwise
+     */
+    function is_iterable($obj)
+    {
+        return is_array($obj) || (is_object($obj) && ($obj instanceof \Traversable));
     }
 }
 
