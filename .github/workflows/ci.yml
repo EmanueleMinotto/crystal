@@ -26,8 +26,9 @@ jobs:
                         "8.3",
                         "8.4",
                     ]
+                extensions: ["apcu"]
 
-        name: PHP ${{ matrix.php }} tests
+        name: PHP ${{ matrix.php }} tests with extensions "${{ matrix.extensions }}"
         steps:
             - uses: actions/checkout@v2
 
@@ -35,7 +36,7 @@ jobs:
               with:
                   php-version: ${{ matrix.php }}
                   coverage: none
-                  extensions: apcu
+                  extensions: ${{ matrix.extensions }}
 
             - run: "composer install"
             - run: "composer test"
