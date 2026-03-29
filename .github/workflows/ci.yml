@@ -27,7 +27,7 @@ jobs:
                         "8.4",
                         "8.5",
                     ]
-                extensions: ["apcu"]
+                extensions: ["apcu", ""]
 
         name: PHP ${{ matrix.php }} tests with extensions "${{ matrix.extensions }}"
         steps:
@@ -41,3 +41,36 @@ jobs:
 
             - run: "composer install"
             - run: "composer test"
+
+    mysql-cache:
+        runs-on: ubuntu-latest
+        services:
+            mysql:
+                image: mysql:8.0
+                env:
+                    MYSQL_ROOT_PASSWORD: root
+                    MYSQL_DATABASE: crystal_test
+                ports:
+                    - 3306:3306
+                options: >-
+                    --health-cmd="mysqladmin ping"
+                    --health-interval=10s
+                    --health-timeout=5s
+                    --health-retries=3
+
+        name: MySQL cache driver
+        steps:
+            - uses: actions/checkout@v2
+
+            - uses: shivammathur/setup-php@v2
+              with:
+                  php-version: "8.4"
+                  coverage: none
+                  extensions: pdo_mysql
+
+            - run: "composer install"
+            - run: "composer test"
+              env:
+                  CRYSTAL_MYSQL_DSN: "mysql:host=127.0.0.1;dbname=crystal_test"
+                  CRYSTAL_MYSQL_USER: root
+                  CRYSTAL_MYSQL_PASS: root
