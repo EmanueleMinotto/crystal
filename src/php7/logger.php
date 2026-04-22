@@ -6,7 +6,7 @@ $deps['logger'] = new class () {
     /**
      * Possible level values.
      */
-    private $logLevels = array(
+    private $logLevels = [
         'emerg' => LOG_EMERG,
         'emergency' => LOG_EMERG,
         'alert' => LOG_ALERT,
@@ -19,7 +19,7 @@ $deps['logger'] = new class () {
         'notice' => LOG_NOTICE,
         'info' => LOG_INFO,
         'debug' => LOG_DEBUG,
-    );
+    ];
 
     /**
      * Custom logger implementation, if defined.
@@ -33,12 +33,12 @@ $deps['logger'] = new class () {
      *
      * @var array
      */
-    private $context = array();
+    private $context = [];
 
-    private function interpolate($message, array $context = array())
+    private function interpolate($message, array $context = [])
     {
         // build a replacement array with braces around the context keys
-        $replace = array();
+        $replace = [];
 
         foreach ($context as $key => $val) {
             // check that the value can be cast to string
@@ -87,7 +87,7 @@ $deps['logger'] = new class () {
      */
     public function resetContext()
     {
-        $this->context = array();
+        $this->context = [];
     }
 
     /**
@@ -110,7 +110,7 @@ $deps['logger'] = new class () {
      *
      * @return void
      */
-    public function emergency($message, $context = array())
+    public function emergency($message, $context = [])
     {
         $this->log('emergency', $message, $context);
     }
@@ -126,7 +126,7 @@ $deps['logger'] = new class () {
      *
      * @return void
      */
-    public function alert($message, $context = array())
+    public function alert($message, $context = [])
     {
         $this->log('alert', $message, $context);
     }
@@ -141,7 +141,7 @@ $deps['logger'] = new class () {
      *
      * @return void
      */
-    public function critical($message, $context = array())
+    public function critical($message, $context = [])
     {
         $this->log('critical', $message, $context);
     }
@@ -155,7 +155,7 @@ $deps['logger'] = new class () {
      *
      * @return void
      */
-    public function error($message, $context = array())
+    public function error($message, $context = [])
     {
         $this->log('error', $message, $context);
     }
@@ -171,7 +171,7 @@ $deps['logger'] = new class () {
      *
      * @return void
      */
-    public function warning($message, $context = array())
+    public function warning($message, $context = [])
     {
         $this->log('warning', $message, $context);
     }
@@ -184,7 +184,7 @@ $deps['logger'] = new class () {
      *
      * @return void
      */
-    public function notice($message, $context = array())
+    public function notice($message, $context = [])
     {
         $this->log('notice', $message, $context);
     }
@@ -199,7 +199,7 @@ $deps['logger'] = new class () {
      *
      * @return void
      */
-    public function info($message, $context = array())
+    public function info($message, $context = [])
     {
         $this->log('info', $message, $context);
     }
@@ -212,7 +212,7 @@ $deps['logger'] = new class () {
      *
      * @return void
      */
-    public function debug($message, $context = array())
+    public function debug($message, $context = [])
     {
         $this->log('debug', $message, $context);
     }
@@ -226,17 +226,17 @@ $deps['logger'] = new class () {
      *
      * @return void
      */
-    public function log($level, $message, $context = array())
+    public function log($level, $message, $context = [])
     {
         $context = array_merge($this->context, $context);
         $message = $this->interpolate($message, $context);
 
         if (!empty($this->implementation)) {
-            return call_user_func_array($this->implementation, array(
+            return call_user_func_array($this->implementation, [
                 $level,
                 $message,
                 $context
-            ));
+            ]);
         }
 
         syslog(

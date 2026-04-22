@@ -1,25 +1,9 @@
 Crystal provides a logger to help developer tracking informations.<br />
-The logger is provided in two different ways based on the PHP version that's used, if it's on PHP 5 the logger is provided as a function, if it's on PHP 7 or newer versions it's provided as an object with an interface similar to the interface provided by [PSR-3](https://www.php-fig.org/psr/psr-3/).
+The logger is provided as an object with an interface similar to [PSR-3](https://www.php-fig.org/psr/psr-3/).
 
 Both the implementations use [`syslog`](https://www.php.net/manual/en/function.syslog.php), so you can manage the implementation through [`openlog`](https://www.php.net/manual/en/function.openlog.php).
 
 The logger allows also placeholders inside the message, like defined in [this section of PSR-3](https://www.php-fig.org/psr/psr-3/#12-message): for each key in the context, all the placeholders defined as `{key}` inside the message will be replaced with the related context value.
-
-### PHP 5 version
-
-```php
-$mf(function () use ($mf) {
-    $logger = $mf('logger');
-
-    $logger('info', 'lorem {placeholder}', array(
-        'foo' => true,
-        'placeholder' => 'ipsum',
-    ));
-    $logger('debug', 'dolor sit amet');
-});
-```
-
-### PHP 7+ version
 
 ```php
 $mf(function () use ($mf) {
@@ -31,8 +15,6 @@ $mf(function () use ($mf) {
     $logger->debug('dolor sit amet');
 });
 ```
-
-If the logger is used in PHP 7+, there are other utilities available.
 
 #### Shared Context
 

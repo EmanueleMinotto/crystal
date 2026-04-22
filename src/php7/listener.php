@@ -4,7 +4,7 @@ $deps['listener'] = new class () {
     /**
      * @var callable[]
      */
-    private $listeners = array();
+    private $listeners = [];
 
     /**
      * Provide all relevant listeners with an event to process.
@@ -28,7 +28,7 @@ $deps['listener'] = new class () {
     public function on(string $eventName, callable $callback)
     {
         if (empty($this->listeners[$eventName])) {
-            $this->listeners[$eventName] = array();
+            $this->listeners[$eventName] = [];
         }
 
         $this->listeners[$eventName][] = $callback;
@@ -36,7 +36,7 @@ $deps['listener'] = new class () {
 
     public function off(string $eventName)
     {
-        $this->listeners[$eventName] = array();
+        $this->listeners[$eventName] = [];
     }
 
     /**
@@ -46,7 +46,7 @@ $deps['listener'] = new class () {
      */
     public function getListenersForEvent($event)
     {
-        return $this->listeners[$this->getEventName($event)] ?? array();
+        return $this->listeners[$this->getEventName($event)] ?? [];
     }
 
     private function getEventName($event)

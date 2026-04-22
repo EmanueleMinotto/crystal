@@ -5,7 +5,7 @@
 ### POLYFILLS ###
 
 /**
- * A PHP (5.3+) microframework based on anonymous functions.
+ * A PHP (7.0+) microframework based on anonymous functions.
  */
 return function () {
     /**
@@ -20,14 +20,14 @@ return function () {
      *
      * @var array
      */
-    static $matches = array();
+    static $matches = [];
 
     /**
      * Dependency Injection callbacks, used for settings too.
      *
      * @var array
      */
-    static $deps = array();
+    static $deps = [];
 
     /**
      * This variable is a constant during an instance.
@@ -41,17 +41,7 @@ return function () {
         $base = quotemeta(rtrim(dirname($_SERVER['SCRIPT_NAME']), '/'));
     }
 
-    ### PHP 5 FUNCTIONS PLACEHOLDER ###
-
-    // hack used to include PHP 7 enhancements and features
-    // without breaking changes nor new files
-    // https://3v4l.org/mArem
-    if (PHP_MAJOR_VERSION >= 7) {
-        $handler = fopen(__FILE__, 'r');
-        fseek($handler, __COMPILER_HALT_OFFSET__);
-        eval(stream_get_contents($handler));
-        fclose($handler);
-    }
+    ### PHP 7 FEATURES PLACEHOLDER ###
 
     // used to shorten code
     $args = func_get_args();
@@ -63,14 +53,6 @@ return function () {
         case 1:
             // Set of utilities
             switch ($args[0]) {
-                case 'get':
-                case 'post':
-                case 'cookie':
-                case 'env':
-                case 'request':
-                case 'server':
-                    return $deps['utils:double-access']($GLOBALS['_'.mb_strtoupper($args[0])]);
-
                 case 'router:not-found':
                     if (!empty($_SERVER['REQUEST_URI'])) {
                         return '(?!('.implode('|', $matches).')$).*';
@@ -205,7 +187,7 @@ return function () {
             $reflector = (is_string($cb) && function_exists($cb)) || $cb instanceof Closure
                 ? new ReflectionFunction($cb)
                 : new ReflectionMethod($cb);
-            $params = array();
+            $params = [];
 
             foreach ($reflector->getParameters() as $parameter) {
                 // reset to prevent key value
@@ -228,9 +210,3 @@ return function () {
     invoke_deploy:
     return call_user_func_array($deploy, func_get_args());
 };
-
-__halt_compiler();
-
-// PHP 7 features, use `$deps` for dependency injection
-
-### PHP 7 FEATURES PLACEHOLDER ###

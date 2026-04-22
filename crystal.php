@@ -54,31 +54,6 @@ spl_autoload_register(function ($class) {
 });
 
 /**
- * Polyfill for the JsonSerializable interface (PHP < 5.4).
- *
- * Provides the JsonSerializable interface if it does not exist, allowing objects
- * to define custom JSON serialization logic via the jsonSerialize() method.
- *
- * @see https://www.php.net/manual/en/class.jsonserializable.php
- */
-if (!interface_exists('JsonSerializable')) {
-    /**
-     * Interface for classes that can be serialized to JSON.
-     *
-     * Implement this interface to define how your object should be converted to JSON.
-     */
-    interface JsonSerializable
-    {
-        /**
-         * Returns data that can be serialized by json_encode().
-         *
-         * @return mixed Data for JSON serialization
-         */
-        public function jsonSerialize();
-    }
-}
-
-/**
  * Polyfill for array_is_list() function (PHP < 8.1).
  *
  * Checks if an array's keys are consecutive numbers starting from 0.
@@ -95,7 +70,7 @@ if (!function_exists('array_is_list')) {
      */
     function array_is_list($array)
     {
-        if (array() === $array || $array === array_values($array)) {
+        if ([] === $array || $array === array_values($array)) {
             return true;
         }
 
@@ -134,7 +109,7 @@ if (!function_exists('is_iterable')) {
 }
 
 /**
- * A PHP (5.3+) microframework based on anonymous functions.
+ * A PHP (7.0+) microframework based on anonymous functions.
  */
 return function () {
     /**
@@ -149,14 +124,14 @@ return function () {
      *
      * @var array
      */
-    static $matches = array();
+    static $matches = [];
 
     /**
      * Dependency Injection callbacks, used for settings too.
      *
      * @var array
      */
-    static $deps = array();
+    static $deps = [];
 
     /**
      * This variable is a constant during an instance.
@@ -170,8 +145,966 @@ return function () {
         $base = quotemeta(rtrim(dirname($_SERVER['SCRIPT_NAME']), '/'));
     }
 
-    $deps['logger'] = function () {
-        $levels = array(
+    /**
+     * Exposes a PSR-16-like cache object via $deps['cache'] supporting:
+     * - get, set, delete, clear
+     * - getMultiple, setMultiple, deleteMultiple
+     * - has
+     *
+     * Keys must be non-empty strings matching /^[A-Za-z0-9_.-]+$/.
+     * Values can be any serializable PHP value.
+     *
+     * Drivers: apcu (default), filename, database, custom.
+     *
+     * @see https://www.php.net/manual/en/book.apcu.php
+     */
+    $deps['cache'] = new class () {
+        /**
+         * Active driver instance.
+         *
+         * @var object|null
+         */
+        private static $driver = null;
+
+        /**
+         * Configure the cache driver.
+         *
+         * Built-in drivers:
+         *   setDriver('apcu')                  — APCu (default)
+         *   setDriver('filename', '/path/dir') — filesystem
+         *   setDriver('database', $pdo)        — PDO (MySQL/SQLite)
+         *
+         * Custom driver (must implement get/set/delete/has/clear):
+         *   setDriver($customObject)
+         *
+         * @param  string|object             $driver Driver name or custom driver object
+         * @param  mixed                     $config Driver-specific configuration
+         * @throws \InvalidArgumentException If driver is unknown or custom object is invalid
+         * @throws \RuntimeException         If driver cannot be initialised
+         */
+        public static function setDriver($driver, $config = null)
+        {
+            if (is_object($driver)) {
+                $required = ['get', 'set', 'delete', 'has', 'clear'];
+                $missing = [];
+
+                foreach ($required as $method) {
+                    if (!method_exists($driver, $method)) {
+                        $missing[] = $method;
+                    }
+                }
+
+                if (!empty($missing)) {
+                    throw new \InvalidArgumentException(
+                        'Custom driver is missing methods: '.implode(', ', $missing)
+                    );
+                }
+
+                static::$driver = $driver;
+
+                return;
+            }
+
+            switch ($driver) {
+                case 'apcu':
+                    if (!function_exists('apcu_enabled') || !apcu_enabled()) {
+                        throw new \RuntimeException('APCu is not available or not enabled');
+                    }
+
+                    static::$driver = new class () {
+                        public function get($key, $default = null)
+                        {
+                            $success = false;
+                            $value = apcu_fetch($key, $success);
+
+                            return $success ? $value : $default;
+                        }
+
+                        public function set($key, $value, $ttl = null)
+                        {
+                            return apcu_store($key, $value, $ttl ?? 0);
+                        }
+
+                        public function delete($key)
+                        {
+                            return apcu_delete($key);
+                        }
+
+                        public function clear()
+                        {
+                            return apcu_clear_cache();
+                        }
+
+                        public function has($key)
+                        {
+                            return apcu_exists($key);
+                        }
+                    };
+
+                    break;
+
+                case 'filename':
+                    if (!is_string($config) || $config === '') {
+                        throw new \InvalidArgumentException(
+                            'filename driver requires a directory path as second argument'
+                        );
+                    }
+
+                    if (!is_dir($config) || !is_writable($config)) {
+                        throw new \RuntimeException(
+                            "Cache directory is not writable: $config"
+                        );
+                    }
+
+                    static::$driver = new class ($config) {
+                        private $dir;
+
+                        public function __construct($dir)
+                        {
+                            $this->dir = rtrim($dir, DIRECTORY_SEPARATOR);
+                        }
+
+                        public function get($key, $default = null)
+                        {
+                            $file = $this->path($key);
+
+                            if (!file_exists($file)) {
+                                return $default;
+                            }
+
+                            $data = unserialize(file_get_contents($file));
+
+                            if ($data['expires'] !== null && time() > $data['expires']) {
+                                unlink($file);
+
+                                return $default;
+                            }
+
+                            return $data['value'];
+                        }
+
+                        public function set($key, $value, $ttl = null)
+                        {
+                            $data = serialize([
+                                'value' => $value,
+                                'expires' => ($ttl !== null && $ttl > 0) ? time() + $ttl : null,
+                            ]);
+
+                            return file_put_contents($this->path($key), $data) !== false;
+                        }
+
+                        public function delete($key)
+                        {
+                            $file = $this->path($key);
+
+                            return !file_exists($file) || unlink($file);
+                        }
+
+                        public function clear()
+                        {
+                            foreach (glob($this->dir.DIRECTORY_SEPARATOR.'*.cache') as $file) {
+                                unlink($file);
+                            }
+
+                            return true;
+                        }
+
+                        public function has($key)
+                        {
+                            $file = $this->path($key);
+
+                            if (!file_exists($file)) {
+                                return false;
+                            }
+
+                            $data = unserialize(file_get_contents($file));
+
+                            if ($data['expires'] !== null && time() > $data['expires']) {
+                                unlink($file);
+
+                                return false;
+                            }
+
+                            return true;
+                        }
+
+                        private function path($key)
+                        {
+                            return $this->dir.DIRECTORY_SEPARATOR.$key.'.cache';
+                        }
+                    };
+
+                    break;
+
+                case 'database':
+                    if (!($config instanceof \PDO)) {
+                        throw new \InvalidArgumentException(
+                            'database driver requires a PDO instance as second argument'
+                        );
+                    }
+
+                    static::$driver = new class ($config) {
+                        private $pdo;
+
+                        public function __construct(\PDO $pdo)
+                        {
+                            $this->pdo = $pdo;
+                            $this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+                            $this->pdo->exec(
+                                'CREATE TABLE IF NOT EXISTS crystal_cache ('
+                                .'cache_key VARCHAR(255) NOT NULL PRIMARY KEY,'
+                                .'cache_value LONGTEXT NOT NULL,'
+                                .'expires_at INT DEFAULT NULL'
+                                .')'
+                            );
+                        }
+
+                        public function get($key, $default = null)
+                        {
+                            $stmt = $this->pdo->prepare(
+                                'SELECT cache_value, expires_at FROM crystal_cache WHERE cache_key = ?'
+                            );
+                            $stmt->execute([$key]);
+                            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+                            if (!$row) {
+                                return $default;
+                            }
+
+                            if ($row['expires_at'] !== null && time() > (int) $row['expires_at']) {
+                                $this->delete($key);
+
+                                return $default;
+                            }
+
+                            return unserialize($row['cache_value']);
+                        }
+
+                        public function set($key, $value, $ttl = null)
+                        {
+                            $expires = ($ttl !== null && $ttl > 0) ? time() + $ttl : null;
+                            $stmt = $this->pdo->prepare(
+                                'REPLACE INTO crystal_cache (cache_key, cache_value, expires_at) VALUES (?, ?, ?)'
+                            );
+
+                            return $stmt->execute([$key, serialize($value), $expires]);
+                        }
+
+                        public function delete($key)
+                        {
+                            $stmt = $this->pdo->prepare(
+                                'DELETE FROM crystal_cache WHERE cache_key = ?'
+                            );
+
+                            return $stmt->execute([$key]);
+                        }
+
+                        public function clear()
+                        {
+                            return $this->pdo->exec('DELETE FROM crystal_cache') !== false;
+                        }
+
+                        public function has($key)
+                        {
+                            $stmt = $this->pdo->prepare(
+                                'SELECT expires_at FROM crystal_cache WHERE cache_key = ?'
+                            );
+                            $stmt->execute([$key]);
+                            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+                            if (!$row) {
+                                return false;
+                            }
+
+                            if ($row['expires_at'] !== null && time() > (int) $row['expires_at']) {
+                                $this->delete($key);
+
+                                return false;
+                            }
+
+                            return true;
+                        }
+                    };
+
+                    break;
+
+                default:
+                    throw new \InvalidArgumentException("Unknown cache driver: $driver");
+            }
+        }
+
+        /**
+         * Fetches a value from the cache by key.
+         *
+         * @param  string                    $key     Cache key
+         * @param  mixed                     $default Value to return if key is not found
+         * @return mixed                     Cached value or $default
+         * @throws \InvalidArgumentException If key is invalid
+         */
+        public function get($key, $default = null)
+        {
+            if (!self::isValidKey($key)) {
+                throw new \InvalidArgumentException("Invalid key: $key");
+            }
+
+            return static::resolveDriver()->get($key, $default);
+        }
+
+        /**
+         * Stores a value in the cache under the given key.
+         *
+         * @param  string                    $key   Cache key
+         * @param  mixed                     $value Value to store
+         * @param  int|null                  $ttl   Time-to-live in seconds (optional)
+         * @return bool                      Success
+         * @throws \InvalidArgumentException If key is invalid
+         */
+        public function set($key, $value, $ttl = null)
+        {
+            if (!self::isValidKey($key)) {
+                throw new \InvalidArgumentException("Invalid key: $key");
+            }
+
+            return static::resolveDriver()->set($key, $value, $ttl);
+        }
+
+        /**
+         * Deletes a value from the cache by key.
+         *
+         * @param  string                    $key Cache key
+         * @return bool                      Success
+         * @throws \InvalidArgumentException If key is invalid
+         */
+        public function delete($key)
+        {
+            if (!self::isValidKey($key)) {
+                throw new \InvalidArgumentException("Invalid key: $key");
+            }
+
+            return static::resolveDriver()->delete($key);
+        }
+
+        /**
+         * Clears the entire cache.
+         *
+         * @return bool Success
+         */
+        public function clear()
+        {
+            return static::resolveDriver()->clear();
+        }
+
+        /**
+         * Fetches multiple values from the cache.
+         *
+         * @param  iterable                  $keys    List of cache keys
+         * @param  mixed                     $default Value to return for missing keys
+         * @return array                     Associative array of key => value
+         * @throws \InvalidArgumentException If keys is not iterable
+         */
+        public function getMultiple($keys, $default = null)
+        {
+            if (!is_iterable($keys)) {
+                throw new \InvalidArgumentException('Keys must be iterable');
+            }
+            $result = [];
+
+            foreach ($keys as $key) {
+                $result[$key] = $this->get($key, $default);
+            }
+
+            return $result;
+        }
+
+        /**
+         * Stores multiple key-value pairs in the cache.
+         *
+         * @param  iterable                  $values Associative array of key => value
+         * @param  int|null                  $ttl    Time-to-live in seconds (optional)
+         * @return bool                      Success
+         * @throws \InvalidArgumentException If values is not iterable
+         */
+        public function setMultiple($values, $ttl = null)
+        {
+            if (!is_iterable($values)) {
+                throw new \InvalidArgumentException('Values must be iterable');
+            }
+            $success = true;
+
+            foreach ($values as $key => $value) {
+                $success = $success && $this->set($key, $value, $ttl);
+            }
+
+            return $success;
+        }
+
+        /**
+         * Deletes multiple values from the cache.
+         *
+         * @param  iterable                  $keys List of cache keys
+         * @return bool                      Success
+         * @throws \InvalidArgumentException If keys is not iterable
+         */
+        public function deleteMultiple($keys)
+        {
+            if (!is_iterable($keys)) {
+                throw new \InvalidArgumentException('Keys must be iterable');
+            }
+            $success = true;
+
+            foreach ($keys as $key) {
+                $success = $success && $this->delete($key);
+            }
+
+            return $success;
+        }
+
+        /**
+         * Checks if a cache key exists.
+         *
+         * @param  string                    $key Cache key
+         * @return bool                      True if key exists
+         * @throws \InvalidArgumentException If key is invalid
+         */
+        public function has($key)
+        {
+            if (!self::isValidKey($key)) {
+                throw new \InvalidArgumentException("Invalid key: $key");
+            }
+
+            return static::resolveDriver()->has($key);
+        }
+
+        /**
+         * Returns the active driver, lazily initialising APCu if none has been set.
+         *
+         * @return object
+         */
+        private static function resolveDriver()
+        {
+            if (static::$driver === null) {
+                static::setDriver('apcu');
+            }
+
+            return static::$driver;
+        }
+
+        /**
+         * Validates a cache key.
+         *
+         * @param  string $key Cache key
+         * @return bool   True if valid
+         */
+        private static function isValidKey($key)
+        {
+            return is_string($key) && $key !== '' && preg_match('/^[A-Za-z0-9_.-]+$/', $key);
+        }
+    };
+
+    /**
+     * Simple container implementation based on PSR-11,
+     * implemented without breaking crystal rules.
+     *
+     * @link https://www.php-fig.org/psr/psr-11/
+     */
+    $deps['container'] = $deps['container'] ?? new class ($deps) {
+        /**
+         * @var array
+         */
+        private static $deps = [];
+
+        /**
+         * @var string[]
+         */
+        private static $aliases = [];
+
+        /**
+         * @param array $deps Dynamic set of dependencies.
+         */
+        public function __construct(array &$deps = [])
+        {
+            static::$deps = & $deps;
+        }
+
+        /**
+         * Finds an entry of the container by its identifier and returns it.
+         *
+         * @param string $id   Identifier of the entry to look for.
+         * @param mixed  $args Optional arguments for the service factory.
+         *
+         * @throws Exception No entry was found for **this** identifier.
+         *
+         * @return mixed Entry.
+         */
+        public function get(string $id, ...$args)
+        {
+            if (!$this->has($id)) {
+                throw new Exception(sprintf('Entry "%s" not found.', $id));
+            }
+
+            if (isset(static::$aliases[$id])) {
+                $id = static::$aliases[$id];
+            }
+
+            $service = static::$deps[$id];
+
+            return is_callable($service)
+                ? call_user_func_array($service, $args)
+                : $service;
+        }
+
+        /**
+         * Returns true if the container can return an entry for the given identifier.
+         * Returns false otherwise.
+         *
+         * `has($id)` returning true does not mean that `get($id)` will not throw an exception.
+         * It does however mean that `get($id)` will not throw a `NotFoundExceptionInterface`.
+         *
+         * @param string $id Identifier of the entry to look for.
+         *
+         * @return bool
+         */
+        public function has(string $id): bool
+        {
+            return isset(static::$deps[$id]) || isset(static::$aliases[$id]);
+        }
+
+        public function set(string $id, $value)
+        {
+            static::$deps[$id] = $value;
+        }
+
+        public function alias(string $alias, string $id)
+        {
+            static::$aliases[$alias] = $id;
+        }
+
+        public function make(string $fqcn, ...$args)
+        {
+            if (isset(static::$aliases[$fqcn])) {
+                $fqcn = static::$aliases[$fqcn];
+            }
+
+            if ($this->has($fqcn)) {
+                return $this->get($fqcn, ...$args);
+            }
+
+            if (!class_exists($fqcn)) {
+                throw new Exception(sprintf('Class "%s" does not exist.', $fqcn));
+            }
+
+            $reflectionClass = new ReflectionClass($fqcn);
+            $constructor = $reflectionClass->getConstructor();
+
+            if (empty($constructor)) {
+                return static::$deps[$fqcn] = $reflectionClass->newInstance();
+            }
+
+            $parameters = $constructor->getParameters();
+
+            if (empty($parameters)) {
+                return static::$deps[$fqcn] = $reflectionClass->newInstance();
+            }
+
+            $resolvedParams = [];
+
+            foreach ($parameters as $parameter) {
+                $type = $parameter->getType();
+                $type = method_exists($type, 'getName')
+                    ? $type->getName()
+                    : (string) $type;
+
+                $name = $parameter->name;
+
+                if (isset($args[$name])) {
+                    $resolvedParams[] = $args[$name];
+
+                    continue;
+                }
+
+                if ($this->has($type) || class_exists($type)) {
+                    $resolvedParams[] = $this->make($type);
+
+                    continue;
+                }
+
+                if ($parameter->isOptional()) {
+                    $parameter->getDefaultValue();
+                }
+            }
+
+            return static::$deps[$fqcn] = $reflectionClass->newInstanceArgs($resolvedParams);
+        }
+    };
+
+    $deps['database'] = new class () {
+        /**
+         * Shared PDO instance.
+         *
+         * @var PDO
+         */
+        private static $pdo;
+
+        /**
+         * Set a shared PDO connection.
+         */
+        public static function setPdo(PDO $pdo)
+        {
+            static::$pdo = $pdo;
+            static::$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            static::$pdo->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
+        }
+
+        /**
+         * Execute a query and parse result rows as array.
+         */
+        public function query(string $sql, array $params = [])
+        {
+            $stmt = static::$pdo->prepare($sql);
+            $stmt->execute($params);
+
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+        /**
+         * A simple query builder, parsing all the results as array of array.
+         *
+         * @param array|string              $fields
+         * @param array|integer|string|null $where
+         * @param string|null               $order
+         * @param string|null               $limit
+         */
+        public function select(string $table, $fields = '*', $where = null, $order = null, $limit = null)
+        {
+            if (empty($fields)) {
+                $fields = '*';
+            }
+
+            if (is_scalar($fields) && preg_match('/[a-zA-Z0-9\_]+/', $fields)) {
+                $fields = [$fields];
+            }
+
+            if (is_array($fields)) {
+                $fields = join(', ', array_map(function ($field) {
+                    return preg_match('/^[a-zA-Z0-9\_]+$/', $field)
+                        ? sprintf('`%s`', $field)
+                        : $field;
+                }, $fields));
+            }
+
+            $sql = sprintf('SELECT %s FROM `%s`', $fields, $table);
+
+            $params = [];
+
+            if (!empty($where)) {
+                $where = $this->buildWhereCondition($where);
+
+                $params += $where['params'];
+                $sql .= sprintf(' WHERE %s', $where['sql']);
+            }
+
+            if (!empty($order)) {
+                $sql .= sprintf(' ORDER BY %s', $order);
+            }
+
+            if (!empty($limit)) {
+                $sql .= sprintf(' LIMIT %s', $limit);
+            }
+
+            return $this->query($sql, $params);
+        }
+
+        /**
+         * Given an array of columns and values, creates a row in the table.
+         *
+         * @return integer|string
+         */
+        public function create(string $table, array $values)
+        {
+            $keys = array_keys($values);
+            $sql = sprintf(
+                'INSERT INTO `%s` (%s) VALUES (:%s)',
+                $table,
+                implode(', ', $keys),
+                implode(', :', $keys)
+            );
+
+            $this->query($sql, $values);
+
+            $lastInsertId = static::$pdo->lastInsertId();
+
+            return is_numeric($lastInsertId)
+                ? (int) $lastInsertId
+                : $lastInsertId;
+        }
+
+        /**
+         * Retrieve a single record.
+         */
+        public function read(string $table, $where, $key = 'id')
+        {
+            $where = $this->buildWhereCondition($where, $key);
+            $stmt = static::$pdo->prepare(sprintf('SELECT * FROM `%s` WHERE %s LIMIT 1', $table, $where['sql']));
+            $stmt->execute($where['params']);
+
+            return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+
+        /**
+         * Update one or more records based on the shared conditions system.
+         */
+        public function update(string $table, array $values, $where, $key = 'id')
+        {
+            $params = $values;
+            $keys = array_keys($values);
+
+            $set = join(', ', array_map(function ($key) {
+                return sprintf('`%s` = :%s', $key, $key);
+            }, $keys));
+
+            $where = $this->buildWhereCondition($where, $key);
+            $stmt = static::$pdo->prepare(sprintf('UPDATE `%s` SET %s WHERE %s', $table, $set, $where['sql']));
+
+            return $stmt->execute(array_merge($where['params'], $params));
+        }
+
+        /**
+         * Delete one or more records based on the shared conditions system.
+         */
+        public function delete(string $table, $where, $key = 'id')
+        {
+            $where = $this->buildWhereCondition($where, $key);
+            $stmt = static::$pdo->prepare(sprintf('DELETE FROM `%s` WHERE %s', $table, $where['sql']));
+
+            return $stmt->execute($where['params']);
+        }
+
+        // === TRANSACTIONS ===
+        /**
+         * @link https://www.php.net/manual/en/pdo.begintransaction.php
+         */
+        public function beginTransaction()
+        {
+            return static::$pdo->beginTransaction();
+        }
+
+        /**
+         * @link https://www.php.net/manual/en/pdo.commit.php
+         */
+        public function commit()
+        {
+            return static::$pdo->commit();
+        }
+
+        /**
+         * @link https://www.php.net/manual/en/pdo.rollback.php
+         */
+        public function rollBack()
+        {
+            return static::$pdo->rollBack();
+        }
+
+        /**
+         * @link https://www.php.net/manual/en/pdo.intransaction.php
+         */
+        public function inTransaction()
+        {
+            return static::$pdo->inTransaction();
+        }
+
+        /**
+         * Grouping of database operations, this allows their executions
+         * without making changes if one of them fails.
+         *
+         * @return mixed The output of the callback.
+         */
+        public function transactional(callable $callback)
+        {
+            $this->beginTransaction();
+
+            try {
+                $output = $callback();
+
+                $this->commit();
+
+                return $output;
+            } catch (Throwable $exception) {
+                $this->rollBack();
+
+                throw $exception;
+            }
+        }
+
+        private function buildWhereCondition(): array
+        {
+            $value = func_get_arg(0);
+
+            if (1 === func_num_args()) {
+                if (empty($value)) {
+                    return [
+                        'params' => [],
+                        'sql' => ''
+                    ];
+                }
+
+                // 1 => `id` = 1
+                // 'foo' => `id` = "foo"
+                if (is_scalar($value) || is_numeric($value)) {
+                    return [
+                        'params' => [
+                            ':id' => $value
+                        ],
+                        'sql' => '`id` = :id',
+                    ];
+                }
+
+                if (array_is_list($value)) {
+                    // [1, 'foo'] => `id` IN (1, "foo")
+                    return [
+                        'params' => [
+                            ':id' => $value
+                        ],
+                        'sql' => '`id` IN (:id)',
+                    ];
+                }
+
+                if (is_array($value)) {
+                    // ['field1 >= ? AND field1 <= ?' => [42, 100], 'field2 LIKE ?' => '%test%'] => (field1 >= ? AND field1 <= ?) AND field2 LIKE ?
+                    // ['bar' => 'foo', 'lorem' => 'ipsum'] => `bar` = "foo" AND `lorem` = "ipsum"
+                    $sql = '';
+                    $params = [];
+
+                    foreach ($value as $k => $v) {
+                        if (preg_match('/^[a-zA-Z0-9\_]+$/', $k)) {
+                            $v = [$k => $v];
+                            $k = sprintf('`%s` = :%s', $k, $k);
+                        }
+
+                        if (!empty($sql)) {
+                            $sql .= ' AND ';
+                        }
+
+                        $sql .= sprintf('(%s)', $k);
+
+                        if (is_scalar($v)) {
+                            $v = [$v];
+                        }
+
+                        if (array_is_list($v)) {
+                            array_push($params, ...$v);
+
+                            continue;
+                        }
+
+                        $params += $v;
+                    }
+
+                    return [
+                        'params' => $params,
+                        'sql' => $sql,
+                    ];
+                }
+            }
+
+            if (2 === func_num_args()) {
+                $key = func_get_arg(1);
+                $prefixed = ':'.$key;
+
+                if (is_array($value) && array_is_list($value)) {
+                    // [1, 2], 'bar' => `bar` IN (1, 2)
+                    return [
+                        'params' => [
+                            $prefixed => $value
+                        ],
+                        'sql' => sprintf('`%s` IN (%s)', $key, $prefixed),
+                    ];
+                }
+
+                // 'foo', 'bar' => `bar` = "foo"
+                return [
+                    'params' => [
+                        $prefixed => $value
+                    ],
+                    'sql' => sprintf('`%s` = %s', $key, $prefixed),
+                ];
+            }
+        }
+    };
+
+    $deps['listener'] = new class () {
+        /**
+         * @var callable[]
+         */
+        private $listeners = [];
+
+        /**
+         * Provide all relevant listeners with an event to process.
+         *
+         * @param object $event The object to process.
+         *
+         * @return object The Event that was passed, now modified by listeners.
+         */
+        public function dispatch($event)
+        {
+            $eventName = $this->getEventName($event);
+            $listeners = $this->getListenersForEvent($event);
+
+            foreach ($listeners as $listener) {
+                $event = $listener($event, $eventName, $this);
+            }
+
+            return $event;
+        }
+
+        public function on(string $eventName, callable $callback)
+        {
+            if (empty($this->listeners[$eventName])) {
+                $this->listeners[$eventName] = [];
+            }
+
+            $this->listeners[$eventName][] = $callback;
+        }
+
+        public function off(string $eventName)
+        {
+            $this->listeners[$eventName] = [];
+        }
+
+        /**
+         * @param object $event An event for which to return the relevant listeners.
+         *
+         * @return iterable<callable> An iterable (array, iterator, or generator) of callables. Each callable MUST be type-compatible with $event.
+         */
+        public function getListenersForEvent($event)
+        {
+            return $this->listeners[$this->getEventName($event)] ?? [];
+        }
+
+        private function getEventName($event)
+        {
+            if (!is_object($event)) {
+                return $event;
+            }
+
+            if (method_exists($event, 'getCrystalEventName')) {
+                return $event->getCrystalEventName();
+            }
+
+            if (method_exists($event, 'getEventName')) {
+                return $event->getEventName();
+            }
+
+            return get_class($event);
+        }
+    };
+
+    // logger based on PSR-3
+    // https://www.php-fig.org/psr/psr-3/
+    $deps['logger'] = new class () {
+        /**
+         * Possible level values.
+         */
+        private $logLevels = [
             'emerg' => LOG_EMERG,
             'emergency' => LOG_EMERG,
             'alert' => LOG_ALERT,
@@ -184,14 +1117,26 @@ return function () {
             'notice' => LOG_NOTICE,
             'info' => LOG_INFO,
             'debug' => LOG_DEBUG,
-        );
+        ];
 
         /**
-         * Interpolates context values into the message placeholders.
+         * Custom logger implementation, if defined.
+         *
+         * @var callable|null
          */
-        $interpolate = function ($message, $context = array()) {
+        private $implementation;
+
+        /**
+         * Additional context for every message.
+         *
+         * @var array
+         */
+        private $context = [];
+
+        private function interpolate($message, array $context = [])
+        {
             // build a replacement array with braces around the context keys
-            $replace = array();
+            $replace = [];
 
             foreach ($context as $key => $val) {
                 // check that the value can be cast to string
@@ -202,52 +1147,240 @@ return function () {
 
             // interpolate replacement values into the message and return
             return strtr($message, $replace);
-        };
+        }
 
         /**
-         * Generic logger using `syslog` for tracking, use `openlog` to change its behaviour.
+         * Add shared context value.
          *
-         * @link https://www.php.net/manual/en/function.syslog.php
+         * @param string $key
+         * @param mixed  $value
+         */
+        public function addContext(string $key, $value)
+        {
+            $this->context[$key] = $value;
+        }
+
+        /**
+         * Set all the shared context.
          *
-         * @param string $level
+         * @param array $context
+         */
+        public function setContext(array $context)
+        {
+            $this->context = $context;
+        }
+
+        /**
+         * Get all the shared context.
+         *
+         * @return array
+         */
+        public function getContext(): array
+        {
+            return $this->context;
+        }
+
+        /**
+         * Unset all the values in the shared context.
+         */
+        public function resetContext()
+        {
+            $this->context = [];
+        }
+
+        /**
+         * Remove specific keys from the shared context.
+         *
+         * @param string $keys
+         */
+        public function unsetContext(string ...$keys)
+        {
+            foreach ($keys as $key) {
+                unset($this->context[$key]);
+            }
+        }
+
+        /**
+         * System is unusable.
+         *
          * @param string $message
          * @param array  $context
+         *
+         * @return void
          */
-        return function ($level, $message, $context = array()) use ($interpolate, $levels) {
-            $level = mb_strtolower($level);
+        public function emergency($message, $context = [])
+        {
+            $this->log('emergency', $message, $context);
+        }
 
-            assert(array_key_exists($level, $levels));
-            assert(is_string($message));
-            assert(is_array($context));
+        /**
+         * Action must be taken immediately.
+         *
+         * Example: Entire website down, database unavailable, etc. This should
+         * trigger the SMS alerts and wake you up.
+         *
+         * @param string $message
+         * @param array  $context
+         *
+         * @return void
+         */
+        public function alert($message, $context = [])
+        {
+            $this->log('alert', $message, $context);
+        }
 
-            syslog($levels[$level], $interpolate($message).' '.json_encode($context));
-        };
+        /**
+         * Critical conditions.
+         *
+         * Example: Application component unavailable, unexpected exception.
+         *
+         * @param string $message
+         * @param array  $context
+         *
+         * @return void
+         */
+        public function critical($message, $context = [])
+        {
+            $this->log('critical', $message, $context);
+        }
+
+        /**
+         * Runtime errors that do not require immediate action but should typically
+         * be logged and monitored.
+         *
+         * @param string $message
+         * @param array  $context
+         *
+         * @return void
+         */
+        public function error($message, $context = [])
+        {
+            $this->log('error', $message, $context);
+        }
+
+        /**
+         * Exceptional occurrences that are not errors.
+         *
+         * Example: Use of deprecated APIs, poor use of an API, undesirable things
+         * that are not necessarily wrong.
+         *
+         * @param string $message
+         * @param array  $context
+         *
+         * @return void
+         */
+        public function warning($message, $context = [])
+        {
+            $this->log('warning', $message, $context);
+        }
+
+        /**
+         * Normal but significant events.
+         *
+         * @param string $message
+         * @param array  $context
+         *
+         * @return void
+         */
+        public function notice($message, $context = [])
+        {
+            $this->log('notice', $message, $context);
+        }
+
+        /**
+         * Interesting events.
+         *
+         * Example: User logs in, SQL logs.
+         *
+         * @param string $message
+         * @param array  $context
+         *
+         * @return void
+         */
+        public function info($message, $context = [])
+        {
+            $this->log('info', $message, $context);
+        }
+
+        /**
+         * Detailed debug information.
+         *
+         * @param string $message
+         * @param array  $context
+         *
+         * @return void
+         */
+        public function debug($message, $context = [])
+        {
+            $this->log('debug', $message, $context);
+        }
+
+        /**
+         * Logs with an arbitrary level.
+         *
+         * @param mixed  $level
+         * @param string $message
+         * @param array  $context
+         *
+         * @return void
+         */
+        public function log($level, $message, $context = [])
+        {
+            $context = array_merge($this->context, $context);
+            $message = $this->interpolate($message, $context);
+
+            if (!empty($this->implementation)) {
+                return call_user_func_array($this->implementation, [
+                    $level,
+                    $message,
+                    $context
+                ]);
+            }
+
+            syslog(
+                $this->logLevels[mb_strtolower($level)] ?? $level,
+                $message.' '.json_encode($context)
+            );
+        }
+
+        /**
+         * Sets a custom implementation instead of the default syslog.
+         *
+         * @param callable $implementation
+         */
+        public function setImplementation(callable $implementation)
+        {
+            $this->implementation = $implementation;
+        }
+
+        /**
+         * Resets the implementation to the default one (using syslog).
+         */
+        public function resetImplementation()
+        {
+            $this->implementation = null;
+        }
     };
 
-    $deps['template'] = function () {
+    unset($deps['template:escape']);
+
+    $deps['template'] = new class () {
         /**
          * Simple template engine to manipulate and render .php files.
          *
-         * @param string $filename
-         * @param array  $data
-         *
          * @return string
          */
-        return function ($filename, $data = array()) {
-            assert(file_exists($filename));
-            assert(is_array($data));
-
+        public function render(string $template, array $data = [])
+        {
             ob_start();
 
             extract($data);
 
-            require $filename;
+            require $template;
 
             return ob_get_clean();
-        };
-    };
+        }
 
-    $deps['template:escape'] = function () {
         /**
          * Escape values to be rendered safely in templates.
          *
@@ -255,58 +1388,11 @@ return function () {
          *
          * @return string
          */
-        return function ($value) {
-            $flags = defined('ENT_SUBSTITUTE')
-                ? ENT_QUOTES | ENT_SUBSTITUTE
-                : ENT_QUOTES;
-
-            return htmlspecialchars($value, $flags, 'UTF-8');
-        };
+        public function e($value)
+        {
+            return htmlspecialchars($value ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        }
     };
-
-    /**
-     * Double access utility.
-     *
-     * @link https://github.com/EmanueleMinotto/crystal/wiki/Double-access-utility
-     *
-     * @var Closure
-     */
-    $deps['utils:double-access'] = function () {
-        // real function
-        return function ($data = array()) use (&$fn) {
-            // if there's something that isn't an
-            // array, it'll not be converted
-            if (!is_array($data)) {
-                return;
-            }
-
-            foreach ($data as $key => $value) {
-                // only arrays can be transformed in ArrayObjects
-                // the 2nd condition is used to prevent recursion
-                // other cases are for objects obviously of
-                // another type that will be converted
-                if (is_array($value) && $value !== $data) {
-                    $data[$key] = $fn($value);
-                } elseif ($value === (string) intval($value)) {
-                    $data[$key] = intval($value);
-                } elseif ($value === (string) floatval($value)) {
-                    $data[$key] = floatval($value);
-                }
-            }
-
-            return new ArrayObject($data, 2);
-        };
-    };
-
-    // hack used to include PHP 7 enhancements and features
-    // without breaking changes nor new files
-    // https://3v4l.org/mArem
-    if (PHP_MAJOR_VERSION >= 7) {
-        $handler = fopen(__FILE__, 'r');
-        fseek($handler, __COMPILER_HALT_OFFSET__);
-        eval(stream_get_contents($handler));
-        fclose($handler);
-    }
 
     // used to shorten code
     $args = func_get_args();
@@ -318,14 +1404,6 @@ return function () {
         case 1:
             // Set of utilities
             switch ($args[0]) {
-                case 'get':
-                case 'post':
-                case 'cookie':
-                case 'env':
-                case 'request':
-                case 'server':
-                    return $deps['utils:double-access']($GLOBALS['_'.mb_strtoupper($args[0])]);
-
                 case 'router:not-found':
                     if (!empty($_SERVER['REQUEST_URI'])) {
                         return '(?!('.implode('|', $matches).')$).*';
@@ -460,7 +1538,7 @@ return function () {
             $reflector = (is_string($cb) && function_exists($cb)) || $cb instanceof Closure
                 ? new ReflectionFunction($cb)
                 : new ReflectionMethod($cb);
-            $params = array();
+            $params = [];
 
             foreach ($reflector->getParameters() as $parameter) {
                 // reset to prevent key value
@@ -483,1257 +1561,3 @@ return function () {
     invoke_deploy:
     return call_user_func_array($deploy, func_get_args());
 };
-
-__halt_compiler();
-
-// PHP 7 features, use `$deps` for dependency injection
-
-/**
- * Exposes a PSR-16-like cache object via $deps['cache'] supporting:
- * - get, set, delete, clear
- * - getMultiple, setMultiple, deleteMultiple
- * - has
- *
- * Keys must be non-empty strings matching /^[A-Za-z0-9_.-]+$/.
- * Values can be any serializable PHP value.
- *
- * Drivers: apcu (default), filename, database, custom.
- *
- * @see https://www.php.net/manual/en/book.apcu.php
- */
-$deps['cache'] = new class () {
-    /**
-     * Active driver instance.
-     *
-     * @var object|null
-     */
-    private static $driver = null;
-
-    /**
-     * Configure the cache driver.
-     *
-     * Built-in drivers:
-     *   setDriver('apcu')                  — APCu (default)
-     *   setDriver('filename', '/path/dir') — filesystem
-     *   setDriver('database', $pdo)        — PDO (MySQL/SQLite)
-     *
-     * Custom driver (must implement get/set/delete/has/clear):
-     *   setDriver($customObject)
-     *
-     * @param  string|object             $driver Driver name or custom driver object
-     * @param  mixed                     $config Driver-specific configuration
-     * @throws \InvalidArgumentException If driver is unknown or custom object is invalid
-     * @throws \RuntimeException         If driver cannot be initialised
-     */
-    public static function setDriver($driver, $config = null)
-    {
-        if (is_object($driver)) {
-            $required = array('get', 'set', 'delete', 'has', 'clear');
-            $missing = array();
-
-            foreach ($required as $method) {
-                if (!method_exists($driver, $method)) {
-                    $missing[] = $method;
-                }
-            }
-
-            if (!empty($missing)) {
-                throw new \InvalidArgumentException(
-                    'Custom driver is missing methods: '.implode(', ', $missing)
-                );
-            }
-
-            static::$driver = $driver;
-
-            return;
-        }
-
-        switch ($driver) {
-            case 'apcu':
-                if (!function_exists('apcu_enabled') || !apcu_enabled()) {
-                    throw new \RuntimeException('APCu is not available or not enabled');
-                }
-
-                static::$driver = new class () {
-                    public function get($key, $default = null)
-                    {
-                        $success = false;
-                        $value = apcu_fetch($key, $success);
-
-                        return $success ? $value : $default;
-                    }
-
-                    public function set($key, $value, $ttl = null)
-                    {
-                        return apcu_store($key, $value, $ttl ?? 0);
-                    }
-
-                    public function delete($key)
-                    {
-                        return apcu_delete($key);
-                    }
-
-                    public function clear()
-                    {
-                        return apcu_clear_cache();
-                    }
-
-                    public function has($key)
-                    {
-                        return apcu_exists($key);
-                    }
-                };
-
-                break;
-
-            case 'filename':
-                if (!is_string($config) || $config === '') {
-                    throw new \InvalidArgumentException(
-                        'filename driver requires a directory path as second argument'
-                    );
-                }
-
-                if (!is_dir($config) || !is_writable($config)) {
-                    throw new \RuntimeException(
-                        "Cache directory is not writable: $config"
-                    );
-                }
-
-                static::$driver = new class ($config) {
-                    private $dir;
-
-                    public function __construct($dir)
-                    {
-                        $this->dir = rtrim($dir, DIRECTORY_SEPARATOR);
-                    }
-
-                    public function get($key, $default = null)
-                    {
-                        $file = $this->path($key);
-
-                        if (!file_exists($file)) {
-                            return $default;
-                        }
-
-                        $data = unserialize(file_get_contents($file));
-
-                        if ($data['expires'] !== null && time() > $data['expires']) {
-                            unlink($file);
-
-                            return $default;
-                        }
-
-                        return $data['value'];
-                    }
-
-                    public function set($key, $value, $ttl = null)
-                    {
-                        $data = serialize(array(
-                            'value' => $value,
-                            'expires' => ($ttl !== null && $ttl > 0) ? time() + $ttl : null,
-                        ));
-
-                        return file_put_contents($this->path($key), $data) !== false;
-                    }
-
-                    public function delete($key)
-                    {
-                        $file = $this->path($key);
-
-                        return !file_exists($file) || unlink($file);
-                    }
-
-                    public function clear()
-                    {
-                        foreach (glob($this->dir.DIRECTORY_SEPARATOR.'*.cache') as $file) {
-                            unlink($file);
-                        }
-
-                        return true;
-                    }
-
-                    public function has($key)
-                    {
-                        $file = $this->path($key);
-
-                        if (!file_exists($file)) {
-                            return false;
-                        }
-
-                        $data = unserialize(file_get_contents($file));
-
-                        if ($data['expires'] !== null && time() > $data['expires']) {
-                            unlink($file);
-
-                            return false;
-                        }
-
-                        return true;
-                    }
-
-                    private function path($key)
-                    {
-                        return $this->dir.DIRECTORY_SEPARATOR.$key.'.cache';
-                    }
-                };
-
-                break;
-
-            case 'database':
-                if (!($config instanceof \PDO)) {
-                    throw new \InvalidArgumentException(
-                        'database driver requires a PDO instance as second argument'
-                    );
-                }
-
-                static::$driver = new class ($config) {
-                    private $pdo;
-
-                    public function __construct(\PDO $pdo)
-                    {
-                        $this->pdo = $pdo;
-                        $this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-                        $this->pdo->exec(
-                            'CREATE TABLE IF NOT EXISTS crystal_cache ('
-                            .'cache_key VARCHAR(255) NOT NULL PRIMARY KEY,'
-                            .'cache_value LONGTEXT NOT NULL,'
-                            .'expires_at INT DEFAULT NULL'
-                            .')'
-                        );
-                    }
-
-                    public function get($key, $default = null)
-                    {
-                        $stmt = $this->pdo->prepare(
-                            'SELECT cache_value, expires_at FROM crystal_cache WHERE cache_key = ?'
-                        );
-                        $stmt->execute(array($key));
-                        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-
-                        if (!$row) {
-                            return $default;
-                        }
-
-                        if ($row['expires_at'] !== null && time() > (int) $row['expires_at']) {
-                            $this->delete($key);
-
-                            return $default;
-                        }
-
-                        return unserialize($row['cache_value']);
-                    }
-
-                    public function set($key, $value, $ttl = null)
-                    {
-                        $expires = ($ttl !== null && $ttl > 0) ? time() + $ttl : null;
-                        $stmt = $this->pdo->prepare(
-                            'REPLACE INTO crystal_cache (cache_key, cache_value, expires_at) VALUES (?, ?, ?)'
-                        );
-
-                        return $stmt->execute(array($key, serialize($value), $expires));
-                    }
-
-                    public function delete($key)
-                    {
-                        $stmt = $this->pdo->prepare(
-                            'DELETE FROM crystal_cache WHERE cache_key = ?'
-                        );
-
-                        return $stmt->execute(array($key));
-                    }
-
-                    public function clear()
-                    {
-                        return $this->pdo->exec('DELETE FROM crystal_cache') !== false;
-                    }
-
-                    public function has($key)
-                    {
-                        $stmt = $this->pdo->prepare(
-                            'SELECT expires_at FROM crystal_cache WHERE cache_key = ?'
-                        );
-                        $stmt->execute(array($key));
-                        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-
-                        if (!$row) {
-                            return false;
-                        }
-
-                        if ($row['expires_at'] !== null && time() > (int) $row['expires_at']) {
-                            $this->delete($key);
-
-                            return false;
-                        }
-
-                        return true;
-                    }
-                };
-
-                break;
-
-            default:
-                throw new \InvalidArgumentException("Unknown cache driver: $driver");
-        }
-    }
-
-    /**
-     * Fetches a value from the cache by key.
-     *
-     * @param  string                    $key     Cache key
-     * @param  mixed                     $default Value to return if key is not found
-     * @return mixed                     Cached value or $default
-     * @throws \InvalidArgumentException If key is invalid
-     */
-    public function get($key, $default = null)
-    {
-        if (!self::isValidKey($key)) {
-            throw new \InvalidArgumentException("Invalid key: $key");
-        }
-
-        return static::resolveDriver()->get($key, $default);
-    }
-
-    /**
-     * Stores a value in the cache under the given key.
-     *
-     * @param  string                    $key   Cache key
-     * @param  mixed                     $value Value to store
-     * @param  int|null                  $ttl   Time-to-live in seconds (optional)
-     * @return bool                      Success
-     * @throws \InvalidArgumentException If key is invalid
-     */
-    public function set($key, $value, $ttl = null)
-    {
-        if (!self::isValidKey($key)) {
-            throw new \InvalidArgumentException("Invalid key: $key");
-        }
-
-        return static::resolveDriver()->set($key, $value, $ttl);
-    }
-
-    /**
-     * Deletes a value from the cache by key.
-     *
-     * @param  string                    $key Cache key
-     * @return bool                      Success
-     * @throws \InvalidArgumentException If key is invalid
-     */
-    public function delete($key)
-    {
-        if (!self::isValidKey($key)) {
-            throw new \InvalidArgumentException("Invalid key: $key");
-        }
-
-        return static::resolveDriver()->delete($key);
-    }
-
-    /**
-     * Clears the entire cache.
-     *
-     * @return bool Success
-     */
-    public function clear()
-    {
-        return static::resolveDriver()->clear();
-    }
-
-    /**
-     * Fetches multiple values from the cache.
-     *
-     * @param  iterable                  $keys    List of cache keys
-     * @param  mixed                     $default Value to return for missing keys
-     * @return array                     Associative array of key => value
-     * @throws \InvalidArgumentException If keys is not iterable
-     */
-    public function getMultiple($keys, $default = null)
-    {
-        if (!is_iterable($keys)) {
-            throw new \InvalidArgumentException('Keys must be iterable');
-        }
-        $result = array();
-
-        foreach ($keys as $key) {
-            $result[$key] = $this->get($key, $default);
-        }
-
-        return $result;
-    }
-
-    /**
-     * Stores multiple key-value pairs in the cache.
-     *
-     * @param  iterable                  $values Associative array of key => value
-     * @param  int|null                  $ttl    Time-to-live in seconds (optional)
-     * @return bool                      Success
-     * @throws \InvalidArgumentException If values is not iterable
-     */
-    public function setMultiple($values, $ttl = null)
-    {
-        if (!is_iterable($values)) {
-            throw new \InvalidArgumentException('Values must be iterable');
-        }
-        $success = true;
-
-        foreach ($values as $key => $value) {
-            $success = $success && $this->set($key, $value, $ttl);
-        }
-
-        return $success;
-    }
-
-    /**
-     * Deletes multiple values from the cache.
-     *
-     * @param  iterable                  $keys List of cache keys
-     * @return bool                      Success
-     * @throws \InvalidArgumentException If keys is not iterable
-     */
-    public function deleteMultiple($keys)
-    {
-        if (!is_iterable($keys)) {
-            throw new \InvalidArgumentException('Keys must be iterable');
-        }
-        $success = true;
-
-        foreach ($keys as $key) {
-            $success = $success && $this->delete($key);
-        }
-
-        return $success;
-    }
-
-    /**
-     * Checks if a cache key exists.
-     *
-     * @param  string                    $key Cache key
-     * @return bool                      True if key exists
-     * @throws \InvalidArgumentException If key is invalid
-     */
-    public function has($key)
-    {
-        if (!self::isValidKey($key)) {
-            throw new \InvalidArgumentException("Invalid key: $key");
-        }
-
-        return static::resolveDriver()->has($key);
-    }
-
-    /**
-     * Returns the active driver, lazily initialising APCu if none has been set.
-     *
-     * @return object
-     */
-    private static function resolveDriver()
-    {
-        if (static::$driver === null) {
-            static::setDriver('apcu');
-        }
-
-        return static::$driver;
-    }
-
-    /**
-     * Validates a cache key.
-     *
-     * @param  string $key Cache key
-     * @return bool   True if valid
-     */
-    private static function isValidKey($key)
-    {
-        return is_string($key) && $key !== '' && preg_match('/^[A-Za-z0-9_.-]+$/', $key);
-    }
-};
-
-/**
- * Simple container implementation based on PSR-11,
- * implemented without breaking crystal rules.
- *
- * @link https://www.php-fig.org/psr/psr-11/
- */
-$deps['container'] = $deps['container'] ?? new class ($deps) {
-    /**
-     * @var array
-     */
-    private static $deps = array();
-
-    /**
-     * @var string[]
-     */
-    private static $aliases = array();
-
-    /**
-     * @param array $deps Dynamic set of dependencies.
-     */
-    public function __construct(array &$deps = array())
-    {
-        static::$deps = & $deps;
-    }
-
-    /**
-     * Finds an entry of the container by its identifier and returns it.
-     *
-     * @param string $id   Identifier of the entry to look for.
-     * @param mixed  $args Optional arguments for the service factory.
-     *
-     * @throws Exception No entry was found for **this** identifier.
-     *
-     * @return mixed Entry.
-     */
-    public function get(string $id, ...$args)
-    {
-        if (!$this->has($id)) {
-            throw new Exception(sprintf('Entry "%s" not found.', $id));
-        }
-
-        if (isset(static::$aliases[$id])) {
-            $id = static::$aliases[$id];
-        }
-
-        $service = static::$deps[$id];
-
-        return is_callable($service)
-            ? call_user_func_array($service, $args)
-            : $service;
-    }
-
-    /**
-     * Returns true if the container can return an entry for the given identifier.
-     * Returns false otherwise.
-     *
-     * `has($id)` returning true does not mean that `get($id)` will not throw an exception.
-     * It does however mean that `get($id)` will not throw a `NotFoundExceptionInterface`.
-     *
-     * @param string $id Identifier of the entry to look for.
-     *
-     * @return bool
-     */
-    public function has(string $id): bool
-    {
-        return isset(static::$deps[$id]) || isset(static::$aliases[$id]);
-    }
-
-    public function set(string $id, $value)
-    {
-        static::$deps[$id] = $value;
-    }
-
-    public function alias(string $alias, string $id)
-    {
-        static::$aliases[$alias] = $id;
-    }
-
-    public function make(string $fqcn, ...$args)
-    {
-        if (isset(static::$aliases[$fqcn])) {
-            $fqcn = static::$aliases[$fqcn];
-        }
-
-        if ($this->has($fqcn)) {
-            return $this->get($fqcn, ...$args);
-        }
-
-        if (!class_exists($fqcn)) {
-            throw new Exception(sprintf('Class "%s" does not exist.', $fqcn));
-        }
-
-        $reflectionClass = new ReflectionClass($fqcn);
-        $constructor = $reflectionClass->getConstructor();
-
-        if (empty($constructor)) {
-            return static::$deps[$fqcn] = $reflectionClass->newInstance();
-        }
-
-        $parameters = $constructor->getParameters();
-
-        if (empty($parameters)) {
-            return static::$deps[$fqcn] = $reflectionClass->newInstance();
-        }
-
-        $resolvedParams = array();
-
-        foreach ($parameters as $parameter) {
-            $type = $parameter->getType();
-            $type = method_exists($type, 'getName')
-                ? $type->getName()
-                : (string) $type;
-
-            $name = $parameter->name;
-
-            if (isset($args[$name])) {
-                $resolvedParams[] = $args[$name];
-
-                continue;
-            }
-
-            if ($this->has($type) || class_exists($type)) {
-                $resolvedParams[] = $this->make($type);
-
-                continue;
-            }
-
-            if ($parameter->isOptional()) {
-                $parameter->getDefaultValue();
-            }
-        }
-
-        return static::$deps[$fqcn] = $reflectionClass->newInstanceArgs($resolvedParams);
-    }
-};
-
-$deps['database'] = new class () {
-    /**
-     * Shared PDO instance.
-     *
-     * @var PDO
-     */
-    private static $pdo;
-
-    /**
-     * Set a shared PDO connection.
-     */
-    public static function setPdo(PDO $pdo)
-    {
-        static::$pdo = $pdo;
-        static::$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        static::$pdo->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
-    }
-
-    /**
-     * Execute a query and parse result rows as array.
-     */
-    public function query(string $sql, array $params = array())
-    {
-        $stmt = static::$pdo->prepare($sql);
-        $stmt->execute($params);
-
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-
-    /**
-     * A simple query builder, parsing all the results as array of array.
-     *
-     * @param array|string              $fields
-     * @param array|integer|string|null $where
-     * @param string|null               $order
-     * @param string|null               $limit
-     */
-    public function select(string $table, $fields = '*', $where = null, $order = null, $limit = null)
-    {
-        if (empty($fields)) {
-            $fields = '*';
-        }
-
-        if (is_scalar($fields) && preg_match('/[a-zA-Z0-9\_]+/', $fields)) {
-            $fields = array($fields);
-        }
-
-        if (is_array($fields)) {
-            $fields = join(', ', array_map(function ($field) {
-                return preg_match('/^[a-zA-Z0-9\_]+$/', $field)
-                    ? sprintf('`%s`', $field)
-                    : $field;
-            }, $fields));
-        }
-
-        $sql = sprintf('SELECT %s FROM `%s`', $fields, $table);
-
-        $params = array();
-
-        if (!empty($where)) {
-            $where = $this->buildWhereCondition($where);
-
-            $params += $where['params'];
-            $sql .= sprintf(' WHERE %s', $where['sql']);
-        }
-
-        if (!empty($order)) {
-            $sql .= sprintf(' ORDER BY %s', $order);
-        }
-
-        if (!empty($limit)) {
-            $sql .= sprintf(' LIMIT %s', $limit);
-        }
-
-        return $this->query($sql, $params);
-    }
-
-    /**
-     * Given an array of columns and values, creates a row in the table.
-     *
-     * @return integer|string
-     */
-    public function create(string $table, array $values)
-    {
-        $keys = array_keys($values);
-        $sql = sprintf(
-            'INSERT INTO `%s` (%s) VALUES (:%s)',
-            $table,
-            implode(', ', $keys),
-            implode(', :', $keys)
-        );
-
-        $this->query($sql, $values);
-
-        $lastInsertId = static::$pdo->lastInsertId();
-
-        return is_numeric($lastInsertId)
-            ? (int) $lastInsertId
-            : $lastInsertId;
-    }
-
-    /**
-     * Retrieve a single record.
-     */
-    public function read(string $table, $where, $key = 'id')
-    {
-        $where = $this->buildWhereCondition($where, $key);
-        $stmt = static::$pdo->prepare(sprintf('SELECT * FROM `%s` WHERE %s LIMIT 1', $table, $where['sql']));
-        $stmt->execute($where['params']);
-
-        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-    }
-
-    /**
-     * Update one or more records based on the shared conditions system.
-     */
-    public function update(string $table, array $values, $where, $key = 'id')
-    {
-        $params = $values;
-        $keys = array_keys($values);
-
-        $set = join(', ', array_map(function ($key) {
-            return sprintf('`%s` = :%s', $key, $key);
-        }, $keys));
-
-        $where = $this->buildWhereCondition($where, $key);
-        $stmt = static::$pdo->prepare(sprintf('UPDATE `%s` SET %s WHERE %s', $table, $set, $where['sql']));
-
-        return $stmt->execute(array_merge($where['params'], $params));
-    }
-
-    /**
-     * Delete one or more records based on the shared conditions system.
-     */
-    public function delete(string $table, $where, $key = 'id')
-    {
-        $where = $this->buildWhereCondition($where, $key);
-        $stmt = static::$pdo->prepare(sprintf('DELETE FROM `%s` WHERE %s', $table, $where['sql']));
-
-        return $stmt->execute($where['params']);
-    }
-
-    // === TRANSACTIONS ===
-    /**
-     * @link https://www.php.net/manual/en/pdo.begintransaction.php
-     */
-    public function beginTransaction()
-    {
-        return static::$pdo->beginTransaction();
-    }
-
-    /**
-     * @link https://www.php.net/manual/en/pdo.commit.php
-     */
-    public function commit()
-    {
-        return static::$pdo->commit();
-    }
-
-    /**
-     * @link https://www.php.net/manual/en/pdo.rollback.php
-     */
-    public function rollBack()
-    {
-        return static::$pdo->rollBack();
-    }
-
-    /**
-     * @link https://www.php.net/manual/en/pdo.intransaction.php
-     */
-    public function inTransaction()
-    {
-        return static::$pdo->inTransaction();
-    }
-
-    /**
-     * Grouping of database operations, this allows their executions
-     * without making changes if one of them fails.
-     *
-     * @return mixed The output of the callback.
-     */
-    public function transactional(callable $callback)
-    {
-        $this->beginTransaction();
-
-        try {
-            $output = $callback();
-
-            $this->commit();
-
-            return $output;
-        } catch (Throwable $exception) {
-            $this->rollBack();
-
-            throw $exception;
-        }
-    }
-
-    private function buildWhereCondition(): array
-    {
-        $value = func_get_arg(0);
-
-        if (1 === func_num_args()) {
-            if (empty($value)) {
-                return array(
-                    'params' => array(),
-                    'sql' => ''
-                );
-            }
-
-            // 1 => `id` = 1
-            // 'foo' => `id` = "foo"
-            if (is_scalar($value) || is_numeric($value)) {
-                return array(
-                    'params' => array(
-                        ':id' => $value
-                    ),
-                    'sql' => '`id` = :id',
-                );
-            }
-
-            if (array_is_list($value)) {
-                // [1, 'foo'] => `id` IN (1, "foo")
-                return array(
-                    'params' => array(
-                        ':id' => $value
-                    ),
-                    'sql' => '`id` IN (:id)',
-                );
-            }
-
-            if (is_array($value)) {
-                // ['field1 >= ? AND field1 <= ?' => [42, 100], 'field2 LIKE ?' => '%test%'] => (field1 >= ? AND field1 <= ?) AND field2 LIKE ?
-                // ['bar' => 'foo', 'lorem' => 'ipsum'] => `bar` = "foo" AND `lorem` = "ipsum"
-                $sql = '';
-                $params = array();
-
-                foreach ($value as $k => $v) {
-                    if (preg_match('/^[a-zA-Z0-9\_]+$/', $k)) {
-                        $v = array($k => $v);
-                        $k = sprintf('`%s` = :%s', $k, $k);
-                    }
-
-                    if (!empty($sql)) {
-                        $sql .= ' AND ';
-                    }
-
-                    $sql .= sprintf('(%s)', $k);
-
-                    if (is_scalar($v)) {
-                        $v = array($v);
-                    }
-
-                    if (array_is_list($v)) {
-                        array_push($params, ...$v);
-
-                        continue;
-                    }
-
-                    $params += $v;
-                }
-
-                return array(
-                    'params' => $params,
-                    'sql' => $sql,
-                );
-            }
-        }
-
-        if (2 === func_num_args()) {
-            $key = func_get_arg(1);
-            $prefixed = ':'.$key;
-
-            if (is_array($value) && array_is_list($value)) {
-                // [1, 2], 'bar' => `bar` IN (1, 2)
-                return array(
-                    'params' => array(
-                        $prefixed => $value
-                    ),
-                    'sql' => sprintf('`%s` IN (%s)', $key, $prefixed),
-                );
-            }
-
-            // 'foo', 'bar' => `bar` = "foo"
-            return array(
-                'params' => array(
-                    $prefixed => $value
-                ),
-                'sql' => sprintf('`%s` = %s', $key, $prefixed),
-            );
-        }
-    }
-};
-
-$deps['listener'] = new class () {
-    /**
-     * @var callable[]
-     */
-    private $listeners = array();
-
-    /**
-     * Provide all relevant listeners with an event to process.
-     *
-     * @param object $event The object to process.
-     *
-     * @return object The Event that was passed, now modified by listeners.
-     */
-    public function dispatch($event)
-    {
-        $eventName = $this->getEventName($event);
-        $listeners = $this->getListenersForEvent($event);
-
-        foreach ($listeners as $listener) {
-            $event = $listener($event, $eventName, $this);
-        }
-
-        return $event;
-    }
-
-    public function on(string $eventName, callable $callback)
-    {
-        if (empty($this->listeners[$eventName])) {
-            $this->listeners[$eventName] = array();
-        }
-
-        $this->listeners[$eventName][] = $callback;
-    }
-
-    public function off(string $eventName)
-    {
-        $this->listeners[$eventName] = array();
-    }
-
-    /**
-     * @param object $event An event for which to return the relevant listeners.
-     *
-     * @return iterable<callable> An iterable (array, iterator, or generator) of callables. Each callable MUST be type-compatible with $event.
-     */
-    public function getListenersForEvent($event)
-    {
-        return $this->listeners[$this->getEventName($event)] ?? array();
-    }
-
-    private function getEventName($event)
-    {
-        if (!is_object($event)) {
-            return $event;
-        }
-
-        if (method_exists($event, 'getCrystalEventName')) {
-            return $event->getCrystalEventName();
-        }
-
-        if (method_exists($event, 'getEventName')) {
-            return $event->getEventName();
-        }
-
-        return get_class($event);
-    }
-};
-
-// logger based on PSR-3
-// https://www.php-fig.org/psr/psr-3/
-$deps['logger'] = new class () {
-    /**
-     * Possible level values.
-     */
-    private $logLevels = array(
-        'emerg' => LOG_EMERG,
-        'emergency' => LOG_EMERG,
-        'alert' => LOG_ALERT,
-        'crit' => LOG_CRIT,
-        'critical' => LOG_CRIT,
-        'err' => LOG_ERR,
-        'error' => LOG_ERR,
-        'warn' => LOG_WARNING,
-        'warning' => LOG_WARNING,
-        'notice' => LOG_NOTICE,
-        'info' => LOG_INFO,
-        'debug' => LOG_DEBUG,
-    );
-
-    /**
-     * Custom logger implementation, if defined.
-     *
-     * @var callable|null
-     */
-    private $implementation;
-
-    /**
-     * Additional context for every message.
-     *
-     * @var array
-     */
-    private $context = array();
-
-    private function interpolate($message, array $context = array())
-    {
-        // build a replacement array with braces around the context keys
-        $replace = array();
-
-        foreach ($context as $key => $val) {
-            // check that the value can be cast to string
-            if (!is_array($val) && (!is_object($val) || method_exists($val, '__toString'))) {
-                $replace['{' . $key . '}'] = $val;
-            }
-        }
-
-        // interpolate replacement values into the message and return
-        return strtr($message, $replace);
-    }
-
-    /**
-     * Add shared context value.
-     *
-     * @param string $key
-     * @param mixed  $value
-     */
-    public function addContext(string $key, $value)
-    {
-        $this->context[$key] = $value;
-    }
-
-    /**
-     * Set all the shared context.
-     *
-     * @param array $context
-     */
-    public function setContext(array $context)
-    {
-        $this->context = $context;
-    }
-
-    /**
-     * Get all the shared context.
-     *
-     * @return array
-     */
-    public function getContext(): array
-    {
-        return $this->context;
-    }
-
-    /**
-     * Unset all the values in the shared context.
-     */
-    public function resetContext()
-    {
-        $this->context = array();
-    }
-
-    /**
-     * Remove specific keys from the shared context.
-     *
-     * @param string $keys
-     */
-    public function unsetContext(string ...$keys)
-    {
-        foreach ($keys as $key) {
-            unset($this->context[$key]);
-        }
-    }
-
-    /**
-     * System is unusable.
-     *
-     * @param string $message
-     * @param array  $context
-     *
-     * @return void
-     */
-    public function emergency($message, $context = array())
-    {
-        $this->log('emergency', $message, $context);
-    }
-
-    /**
-     * Action must be taken immediately.
-     *
-     * Example: Entire website down, database unavailable, etc. This should
-     * trigger the SMS alerts and wake you up.
-     *
-     * @param string $message
-     * @param array  $context
-     *
-     * @return void
-     */
-    public function alert($message, $context = array())
-    {
-        $this->log('alert', $message, $context);
-    }
-
-    /**
-     * Critical conditions.
-     *
-     * Example: Application component unavailable, unexpected exception.
-     *
-     * @param string $message
-     * @param array  $context
-     *
-     * @return void
-     */
-    public function critical($message, $context = array())
-    {
-        $this->log('critical', $message, $context);
-    }
-
-    /**
-     * Runtime errors that do not require immediate action but should typically
-     * be logged and monitored.
-     *
-     * @param string $message
-     * @param array  $context
-     *
-     * @return void
-     */
-    public function error($message, $context = array())
-    {
-        $this->log('error', $message, $context);
-    }
-
-    /**
-     * Exceptional occurrences that are not errors.
-     *
-     * Example: Use of deprecated APIs, poor use of an API, undesirable things
-     * that are not necessarily wrong.
-     *
-     * @param string $message
-     * @param array  $context
-     *
-     * @return void
-     */
-    public function warning($message, $context = array())
-    {
-        $this->log('warning', $message, $context);
-    }
-
-    /**
-     * Normal but significant events.
-     *
-     * @param string $message
-     * @param array  $context
-     *
-     * @return void
-     */
-    public function notice($message, $context = array())
-    {
-        $this->log('notice', $message, $context);
-    }
-
-    /**
-     * Interesting events.
-     *
-     * Example: User logs in, SQL logs.
-     *
-     * @param string $message
-     * @param array  $context
-     *
-     * @return void
-     */
-    public function info($message, $context = array())
-    {
-        $this->log('info', $message, $context);
-    }
-
-    /**
-     * Detailed debug information.
-     *
-     * @param string $message
-     * @param array  $context
-     *
-     * @return void
-     */
-    public function debug($message, $context = array())
-    {
-        $this->log('debug', $message, $context);
-    }
-
-    /**
-     * Logs with an arbitrary level.
-     *
-     * @param mixed  $level
-     * @param string $message
-     * @param array  $context
-     *
-     * @return void
-     */
-    public function log($level, $message, $context = array())
-    {
-        $context = array_merge($this->context, $context);
-        $message = $this->interpolate($message, $context);
-
-        if (!empty($this->implementation)) {
-            return call_user_func_array($this->implementation, array(
-                $level,
-                $message,
-                $context
-            ));
-        }
-
-        syslog(
-            $this->logLevels[mb_strtolower($level)] ?? $level,
-            $message.' '.json_encode($context)
-        );
-    }
-
-    /**
-     * Sets a custom implementation instead of the default syslog.
-     *
-     * @param callable $implementation
-     */
-    public function setImplementation(callable $implementation)
-    {
-        $this->implementation = $implementation;
-    }
-
-    /**
-     * Resets the implementation to the default one (using syslog).
-     */
-    public function resetImplementation()
-    {
-        $this->implementation = null;
-    }
-};
-
-unset($deps['template:escape']);
-
-$deps['template'] = new class () {
-    /**
-     * Simple template engine to manipulate and render .php files.
-     *
-     * @return string
-     */
-    public function render(string $template, array $data = array())
-    {
-        ob_start();
-
-        extract($data);
-
-        require $template;
-
-        return ob_get_clean();
-    }
-
-    /**
-     * Escape values to be rendered safely in templates.
-     *
-     * @param string $value
-     *
-     * @return string
-     */
-    public function e($value)
-    {
-        return htmlspecialchars($value ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    }
-};
-

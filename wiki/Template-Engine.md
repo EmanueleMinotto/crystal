@@ -21,23 +21,6 @@ and render it with the following code:
 ```php
 $mf(function () use ($mf) {
     $tpl = $mf('template');
-    $escape = $mf('template:escape');
-
-    echo $tpl('example.html.php', array(
-        'name' => 'user',
-        'escaped_link' => $escape("<a href='test'>Test</a>"),
-    ));
-});
-```
-
-The output you'll obtain for the user is: `Hello user! <a href='test'>Test</a>`.<br />
-You'll see also the `a` tag because its content is escaped, so won't be rendered as HTML.
-
-If you are using PHP 7 or newer versions, you won't have the `template:escape` function and `$tpl` will be an object with two methods: `render` and `e`.
-
-```php
-$mf(function () use ($mf) {
-    $tpl = $mf('template');
 
     echo $tpl->render('example.html.php', array(
         'name' => 'user',
@@ -45,3 +28,6 @@ $mf(function () use ($mf) {
     ));
 });
 ```
+
+The output you'll obtain for the user is: `Hello user! <a href='test'>Test</a>`.<br />
+You'll see also the `a` tag because its content is escaped, so won't be rendered as HTML.

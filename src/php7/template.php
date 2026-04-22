@@ -8,7 +8,7 @@ $deps['template'] = new class () {
      *
      * @return string
      */
-    public function render(string $template, array $data = array())
+    public function render(string $template, array $data = [])
     {
         ob_start();
 

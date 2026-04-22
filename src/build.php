@@ -24,15 +24,6 @@ function replace_placeholders($content)
 
     $content = str_replace('### POLYFILLS ###', $raw, $content);
 
-    $php5files = glob(__DIR__.'/php5/*.php');
-    $raw = '';
-
-    foreach ($php5files as $php5file) {
-        $raw .= PHP_EOL . get_php_only($php5file);
-    }
-
-    $content = str_replace('### PHP 5 FUNCTIONS PLACEHOLDER ###', $raw, $content);
-
     $php5files = glob(__DIR__.'/php7/*.php');
     $raw = '';
 

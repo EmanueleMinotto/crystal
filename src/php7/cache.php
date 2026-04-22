@@ -40,8 +40,8 @@ $deps['cache'] = new class () {
     public static function setDriver($driver, $config = null)
     {
         if (is_object($driver)) {
-            $required = array('get', 'set', 'delete', 'has', 'clear');
-            $missing = array();
+            $required = ['get', 'set', 'delete', 'has', 'clear'];
+            $missing = [];
 
             foreach ($required as $method) {
                 if (!method_exists($driver, $method)) {
@@ -140,10 +140,10 @@ $deps['cache'] = new class () {
 
                     public function set($key, $value, $ttl = null)
                     {
-                        $data = serialize(array(
+                        $data = serialize([
                             'value' => $value,
                             'expires' => ($ttl !== null && $ttl > 0) ? time() + $ttl : null,
-                        ));
+                        ]);
 
                         return file_put_contents($this->path($key), $data) !== false;
                     }
@@ -219,7 +219,7 @@ $deps['cache'] = new class () {
                         $stmt = $this->pdo->prepare(
                             'SELECT cache_value, expires_at FROM crystal_cache WHERE cache_key = ?'
                         );
-                        $stmt->execute(array($key));
+                        $stmt->execute([$key]);
                         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
 
                         if (!$row) {
@@ -242,7 +242,7 @@ $deps['cache'] = new class () {
                             'REPLACE INTO crystal_cache (cache_key, cache_value, expires_at) VALUES (?, ?, ?)'
                         );
 
-                        return $stmt->execute(array($key, serialize($value), $expires));
+                        return $stmt->execute([$key, serialize($value), $expires]);
                     }
 
                     public function delete($key)
@@ -251,7 +251,7 @@ $deps['cache'] = new class () {
                             'DELETE FROM crystal_cache WHERE cache_key = ?'
                         );
 
-                        return $stmt->execute(array($key));
+                        return $stmt->execute([$key]);
                     }
 
                     public function clear()
@@ -264,7 +264,7 @@ $deps['cache'] = new class () {
                         $stmt = $this->pdo->prepare(
                             'SELECT expires_at FROM crystal_cache WHERE cache_key = ?'
                         );
-                        $stmt->execute(array($key));
+                        $stmt->execute([$key]);
                         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
 
                         if (!$row) {
@@ -362,7 +362,7 @@ $deps['cache'] = new class () {
         if (!is_iterable($keys)) {
             throw new \InvalidArgumentException('Keys must be iterable');
         }
-        $result = array();
+        $result = [];
 
         foreach ($keys as $key) {
             $result[$key] = $this->get($key, $default);

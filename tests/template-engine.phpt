@@ -1,5 +1,7 @@
 --TEST--
 Template Engine
+--SKIPIF--
+<?php if (PHP_MAJOR_VERSION < 7) die('Skip: PHP 7+ is required'); ?>
 --FILE--
 <?php
 
@@ -8,19 +10,10 @@ $mf = require_once(__DIR__.'/../crystal.php');
 $mf(function () use ($mf) {
     $tpl = $mf('template');
 
-    if (PHP_MAJOR_VERSION < 7) {
-        $escape = $mf('template:escape');
-
-        echo $tpl(__DIR__.'/template-engine/example.html.php', array(
-            'title' => 'Hello World!',
-            'name' => $escape("<a href='test'>Test</a>"),
-        ));
-    } else {
-        echo $tpl->render(__DIR__.'/template-engine/example.html.php', array(
-            'title' => 'Hello World!',
-            'name' => $tpl->e("<a href='test'>Test</a>"),
-        ));
-    }
+    echo $tpl->render(__DIR__.'/template-engine/example.html.php', array(
+        'title' => 'Hello World!',
+        'name' => $tpl->e("<a href='test'>Test</a>"),
+    ));
 });
 
 ?>

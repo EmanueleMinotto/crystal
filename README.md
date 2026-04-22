@@ -1,6 +1,6 @@
 # Crystal PHP Microframework ![Continuous Integration](https://github.com/EmanueleMinotto/crystal/workflows/Continuous%20Integration/badge.svg)
 
-This is a PHP (5.3+) microframework based on [anonymous functions](http://php.net/manual/en/functions.anonymous.php) and [anonymous classes](https://www.php.net/manual/en/language.oop5.anonymous.php).
+This is a PHP (7.0+) microframework based on [anonymous functions](http://php.net/manual/en/functions.anonymous.php) and [anonymous classes](https://www.php.net/manual/en/language.oop5.anonymous.php).
 
 ```php
 <?php
@@ -22,7 +22,7 @@ $mf('/', function () {
 -   named patterns
 -   an [Autoloader](https://github.com/EmanueleMinotto/crystal/wiki/Autoloader) based on the [PSR-0](https://www.php-fig.org/psr/psr-0/) standard
 -   a [Template Engine](https://github.com/EmanueleMinotto/crystal/wiki/Template-Engine)
--   a [Logger](https://github.com/EmanueleMinotto/crystal/wiki/Logger) available from PHP 5, based on [PSR-3](https://www.php-fig.org/psr/psr-3/)
+-   a [Logger](https://github.com/EmanueleMinotto/crystal/wiki/Logger) based on [PSR-3](https://www.php-fig.org/psr/psr-3/)
 -   a [Database](https://github.com/EmanueleMinotto/crystal/wiki/Database) interaction system
 -   an [Event Listener](https://github.com/EmanueleMinotto/crystal/wiki/Event-Listener) to listen and dispatch events
 -   a [Cache](https://github.com/EmanueleMinotto/crystal/wiki/Cache) system based on APCu

@@ -21,7 +21,7 @@ $deps['database'] = new class () {
     /**
      * Execute a query and parse result rows as array.
      */
-    public function query(string $sql, array $params = array())
+    public function query(string $sql, array $params = [])
     {
         $stmt = static::$pdo->prepare($sql);
         $stmt->execute($params);
@@ -44,7 +44,7 @@ $deps['database'] = new class () {
         }
 
         if (is_scalar($fields) && preg_match('/[a-zA-Z0-9\_]+/', $fields)) {
-            $fields = array($fields);
+            $fields = [$fields];
         }
 
         if (is_array($fields)) {
@@ -57,7 +57,7 @@ $deps['database'] = new class () {
 
         $sql = sprintf('SELECT %s FROM `%s`', $fields, $table);
 
-        $params = array();
+        $params = [];
 
         if (!empty($where)) {
             $where = $this->buildWhereCondition($where);
@@ -204,42 +204,42 @@ $deps['database'] = new class () {
 
         if (1 === func_num_args()) {
             if (empty($value)) {
-                return array(
-                    'params' => array(),
+                return [
+                    'params' => [],
                     'sql' => ''
-                );
+                ];
             }
 
             // 1 => `id` = 1
             // 'foo' => `id` = "foo"
             if (is_scalar($value) || is_numeric($value)) {
-                return array(
-                    'params' => array(
+                return [
+                    'params' => [
                         ':id' => $value
-                    ),
+                    ],
                     'sql' => '`id` = :id',
-                );
+                ];
             }
 
             if (array_is_list($value)) {
                 // [1, 'foo'] => `id` IN (1, "foo")
-                return array(
-                    'params' => array(
+                return [
+                    'params' => [
                         ':id' => $value
-                    ),
+                    ],
                     'sql' => '`id` IN (:id)',
-                );
+                ];
             }
 
             if (is_array($value)) {
                 // ['field1 >= ? AND field1 <= ?' => [42, 100], 'field2 LIKE ?' => '%test%'] => (field1 >= ? AND field1 <= ?) AND field2 LIKE ?
                 // ['bar' => 'foo', 'lorem' => 'ipsum'] => `bar` = "foo" AND `lorem` = "ipsum"
                 $sql = '';
-                $params = array();
+                $params = [];
 
                 foreach ($value as $k => $v) {
                     if (preg_match('/^[a-zA-Z0-9\_]+$/', $k)) {
-                        $v = array($k => $v);
+                        $v = [$k => $v];
                         $k = sprintf('`%s` = :%s', $k, $k);
                     }
 
@@ -250,7 +250,7 @@ $deps['database'] = new class () {
                     $sql .= sprintf('(%s)', $k);
 
                     if (is_scalar($v)) {
-                        $v = array($v);
+                        $v = [$v];
                     }
 
                     if (array_is_list($v)) {
@@ -262,10 +262,10 @@ $deps['database'] = new class () {
                     $params += $v;
                 }
 
-                return array(
+                return [
                     'params' => $params,
                     'sql' => $sql,
-                );
+                ];
             }
         }
 
@@ -275,21 +275,21 @@ $deps['database'] = new class () {
 
             if (is_array($value) && array_is_list($value)) {
                 // [1, 2], 'bar' => `bar` IN (1, 2)
-                return array(
-                    'params' => array(
+                return [
+                    'params' => [
                         $prefixed => $value
-                    ),
+                    ],
                     'sql' => sprintf('`%s` IN (%s)', $key, $prefixed),
-                );
+                ];
             }
 
             // 'foo', 'bar' => `bar` = "foo"
-            return array(
-                'params' => array(
+            return [
+                'params' => [
                     $prefixed => $value
-                ),
+                ],
                 'sql' => sprintf('`%s` = %s', $key, $prefixed),
-            );
+            ];
         }
     }
 };

@@ -1,6 +1,6 @@
 Welcome to the crystal wiki!
 
-This is a PHP (5.3+) microframework based on [anonymous functions](http://php.net/manual/en/functions.anonymous.php) and [anonymous classes](https://www.php.net/manual/en/language.oop5.anonymous.php).
+This is a PHP (7.0+) microframework based on [anonymous functions](http://php.net/manual/en/functions.anonymous.php) and [anonymous classes](https://www.php.net/manual/en/language.oop5.anonymous.php).
 
 ```php
 <?php
@@ -22,7 +22,7 @@ $mf('/', function () {
 -   named patterns
 -   an [[Autoloader]] based on the [PSR-0](https://www.php-fig.org/psr/psr-0/) standard
 -   a [[Template Engine]]
--   a [[Logger]] available from PHP 5, based on [PSR-3](https://www.php-fig.org/psr/psr-3/)
+-   a [[Logger]] based on [PSR-3](https://www.php-fig.org/psr/psr-3/)
 -   a [[Database]] interaction system
 -   a [[Cache]] system based on APCu
 -   an [[Event Listener]] to listen and dispatch events

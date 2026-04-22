@@ -91,5 +91,3 @@ $mf($mf('router:not-found'), function () {
     echo 'Error 404: Page not Found';
 });
 ```
-
-This is part of the microframework [[Utilities]].

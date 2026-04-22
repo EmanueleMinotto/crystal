@@ -10,17 +10,17 @@ $deps['container'] = $deps['container'] ?? new class ($deps) {
     /**
      * @var array
      */
-    private static $deps = array();
+    private static $deps = [];
 
     /**
      * @var string[]
      */
-    private static $aliases = array();
+    private static $aliases = [];
 
     /**
      * @param array $deps Dynamic set of dependencies.
      */
-    public function __construct(array &$deps = array())
+    public function __construct(array &$deps = [])
     {
         static::$deps = & $deps;
     }
@@ -105,7 +105,7 @@ $deps['container'] = $deps['container'] ?? new class ($deps) {
             return static::$deps[$fqcn] = $reflectionClass->newInstance();
         }
 
-        $resolvedParams = array();
+        $resolvedParams = [];
 
         foreach ($parameters as $parameter) {
             $type = $parameter->getType();
