@@ -5,6 +5,7 @@ Contributes must follow these rules:
 -   the [PHP documentation](http://php.net/manual/en/indexes.functions.php) is full of functionalities, use them!
 -   the code must be documented (one big file is hard to read, one big undocumented source is impossible to read)
 -   every pull request must be documented
+-   commit messages must follow the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification (e.g. `fix: keep service instances between calls`)
 -   PECL extensions are allowed only if the existence is checked using `extension_loaded` and if the functionality doesn't have side effects but adds functionalities or improves the existing features
 
 Code can be split into `src/php5` folder for PHP 5.3+ compatible code and into `src/php7` folder for PHP 7+ compatible code.
