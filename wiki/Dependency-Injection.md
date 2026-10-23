@@ -125,3 +125,17 @@ $mf(function () use ($mf) {
 
     var_dump($value);
 });
+
+## Built-in services
+
+The built-in services (`cache`, `container`, `database`, `listener`, `logger` and `template`) are created once, so every call returns the same instance.
+
+They can be replaced like any other dependency:
+
+```php
+$mf('logger', new MyLogger());
+
+$mf(function () use ($mf) {
+    $mf('logger'); // MyLogger instance
+});
+```

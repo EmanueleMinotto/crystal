@@ -38,6 +38,8 @@ The event name is guessed with the following priority:
 3. if it's an object, than the fully qualified class name will be used
 4. otherwise the event itself is the name
 
+`$mf('listener')` always returns the same instance, so listeners can be registered in one place and events dispatched from another one.
+
 ## Usage without event
 
 Events can be used even without an object
