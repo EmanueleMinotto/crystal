@@ -3,10 +3,6 @@ Apply and revert migrations registered with callbacks.
 --SKIPIF--
 <?php
 
-if (PHP_MAJOR_VERSION < 7) {
-    die('Skip: PHP 7+ is required');
-}
-
 if (!extension_loaded('pdo_sqlite')) {
     die('Skip: pdo_sqlite is required');
 }

@@ -1,7 +1,5 @@
 --TEST--
 Logger
---SKIPIF--
-<?php if (PHP_MAJOR_VERSION < 7) die('Skip: PHP 7+ is required'); ?>
 --DESCRIPTION--
 Verify that logger works correctly.
 

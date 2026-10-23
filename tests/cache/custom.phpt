@@ -1,11 +1,5 @@
 --TEST--
 Cache with custom driver
---SKIPIF--
-<?php
-if (PHP_MAJOR_VERSION < 7) {
-    die('Skip: PHP 7+ is required');
-}
-?>
 --FILE--
 <?php
 $mf = require_once(__DIR__.'/../../crystal.php');

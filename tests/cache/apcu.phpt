@@ -2,9 +2,6 @@
 Cache with APCu driver
 --SKIPIF--
 <?php
-if (PHP_MAJOR_VERSION < 7) {
-    die('Skip: PHP 7+ is required');
-}
 if (!function_exists('apcu_enabled') || !apcu_enabled()) {
     die('Skip: APCu is required');
 }

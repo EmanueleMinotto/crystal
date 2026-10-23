@@ -2,9 +2,6 @@
 Cache with database driver (MySQL)
 --SKIPIF--
 <?php
-if (PHP_MAJOR_VERSION < 7) {
-    die('Skip: PHP 7+ is required');
-}
 if (!extension_loaded('pdo_mysql')) {
     die('Skip: pdo_mysql is required');
 }
