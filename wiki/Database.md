@@ -147,3 +147,7 @@ $mf(function () use ($mf) {
     }
 });
 ```
+
+## Migrations
+
+Schema changes can be versioned and applied using the [[Migrations]] utility.
