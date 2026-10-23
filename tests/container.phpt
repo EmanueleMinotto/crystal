@@ -1,5 +1,5 @@
 --TEST--
-PSR container when PHP 7.0+
+PSR container
 --FILE--
 <?php
 
