@@ -15,17 +15,13 @@ $mf('bar', function () {
 });
 
 $mf('/', function () use ($mf) {
-    var_dump($mf('bar')->foo);
+    $bar = $mf('bar');
+
+    var_dump($bar, $bar->foo);
 });
 
-var_dump(
-    $bar,
-    $bar->foo
-);
-// object(Closure)[2]
-// object(Bar)[5]
+// object(Bar)
 //   public 'foo' => int 5
-// int 5
 // int 5
 ```
 
@@ -33,10 +29,10 @@ var_dump(
 
 See https://www.php-fig.org/psr/psr-11/
 
-If PHP 7 or a newer version is used, than a `$mf('container')` utility becomes available too.<br/>
+A `$mf('container')` utility is available too.<br/>
 The container will have the same values of those defined in the above section.
 
-Using the PHP 7 class, additional arguments can be passed to the service constructor.
+Using the container, additional arguments can be passed to the service constructor.
 
 ```php
 class Bar {

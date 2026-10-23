@@ -1,5 +1,5 @@
 Most of the server-side applications based on PHP are based on a database, so crystal provides a simple utility to work with it.<br />
-The utility is accessible from `$mf('database')` but **only for PHP 7 or newer versions**, because it's an anonymous class.
+The utility is accessible from `$mf('database')`.
 
 In this case the framework can't guess where is your database, so you need to setup at least the database connection.<br/>
 The connection can be done with the `setPdo` static method.
