@@ -1,13 +1,5 @@
 --TEST--
-PSR container when PHP 7.0+
---SKIPIF--
-<?php
-
-if (PHP_MAJOR_VERSION < 7) {
-    die('Skip: PHP 7+ is required');
-}
-
-?>
+PSR container
 --FILE--
 <?php
 

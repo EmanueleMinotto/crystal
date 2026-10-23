@@ -3,10 +3,6 @@ Mailer with SMTP driver
 --SKIPIF--
 <?php
 
-if (PHP_MAJOR_VERSION < 7) {
-    die('Skip: PHP 7+ is required');
-}
-
 if (!function_exists('proc_open')) {
     die('Skip: proc_open is required');
 }

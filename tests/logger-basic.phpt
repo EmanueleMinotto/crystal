@@ -1,12 +1,10 @@
 --TEST--
 Logger
---SKIPIF--
-<?php if (PHP_MAJOR_VERSION < 7) die('Skip: PHP 7+ is required'); ?>
 --DESCRIPTION--
 Verify that logger works correctly.
 
-PHPUnit 4.8 does not accept the EXPECTREGEX section, so the check
-must be very basic.
+The default implementation writes to syslog, so the test only checks
+that logging completes without errors.
 --FILE--
 <?php
 

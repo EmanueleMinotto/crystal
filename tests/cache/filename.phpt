@@ -2,9 +2,6 @@
 Cache with filename driver
 --SKIPIF--
 <?php
-if (PHP_MAJOR_VERSION < 7) {
-    die('Skip: PHP 7+ is required');
-}
 if (!is_writable(sys_get_temp_dir())) {
     die('Skip: temp directory is not writable');
 }
