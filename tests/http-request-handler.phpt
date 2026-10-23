@@ -1,13 +1,8 @@
 --TEST--
 PSR-15 request handlers used as route callbacks
---SKIPIF--
-<?php require __DIR__.'/http/skipif.inc'; ?>
 --FILE--
 <?php
 
-require_once __DIR__.'/../vendor/autoload.php';
-
-use Nyholm\Psr7\Response;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
@@ -21,13 +16,22 @@ $_POST = ['greeting' => 'Hello'];
 
 class HelloHandler implements RequestHandlerInterface
 {
+    private $factory;
+
+    public function __construct($factory)
+    {
+        $this->factory = $factory;
+    }
+
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
-        return new Response(200, [], $request->getParsedBody()['greeting'].' '.$request->getAttribute('name').'!');
+        return $this->factory->createResponse()->withBody($this->factory->createStream(
+            $request->getParsedBody()['greeting'].' '.$request->getAttribute('name').'!'
+        ));
     }
 }
 
-$mf('/hello/(?P<name>\w+)', new HelloHandler(), 'POST');
+$mf('/hello/(?P<name>\w+)', new HelloHandler($mf('http')->getFactory()), 'POST');
 
 ?>
 --EXPECT--

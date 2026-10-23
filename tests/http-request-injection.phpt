@@ -1,11 +1,7 @@
 --TEST--
 PSR-7 request injected in route callbacks
---SKIPIF--
-<?php require __DIR__.'/http/skipif.inc'; ?>
 --FILE--
 <?php
-
-require_once __DIR__.'/../vendor/autoload.php';
 
 use Psr\Http\Message\ServerRequestInterface;
 

@@ -1,11 +1,7 @@
 --TEST--
 PSR-7 responses returned by route callbacks are emitted
---SKIPIF--
-<?php require __DIR__.'/http/skipif.inc'; ?>
 --FILE--
 <?php
-
-require_once __DIR__.'/../vendor/autoload.php';
 
 use Psr\Http\Message\ServerRequestInterface;
 

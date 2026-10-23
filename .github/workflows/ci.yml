@@ -35,7 +35,7 @@ jobs:
                   coverage: none
                   extensions: ${{ matrix.extensions }}
 
-            # nyholm/psr7 requires PHP 7.1+, PSR-7 tests are skipped
+            # nyholm/psr7 requires PHP 7.1+, tests using it are skipped
             - if: matrix.php == '7.0'
               run: "composer remove --dev --no-update nyholm/psr7"
 

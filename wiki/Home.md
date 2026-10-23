@@ -30,5 +30,5 @@ $mf('/', function () {
 -   a [[Cache]] system based on APCu
 -   a [[Mailer]] to send emails using `mail()` or SMTP
 -   an [[Event Listener]] to listen and dispatch events
--   optional [[HTTP Messages]] support for [PSR-7](https://www.php-fig.org/psr/psr-7/) and [PSR-15](https://www.php-fig.org/psr/psr-15/)
+-   [[HTTP Messages]] based on [PSR-7](https://www.php-fig.org/psr/psr-7/) and [PSR-15](https://www.php-fig.org/psr/psr-15/)
 -   **no external dependencies, just a single PHP file!**

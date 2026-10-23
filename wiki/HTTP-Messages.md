@@ -1,10 +1,7 @@
 Crystal can integrate [PSR-7](https://www.php-fig.org/psr/psr-7/) HTTP messages and [PSR-15](https://www.php-fig.org/psr/psr-15/) request handlers and middlewares.
 
-The support is opt-in: crystal doesn't bundle any interface or implementation, so it still has no external dependencies. Install the packages you need, for example:
-
-```
-composer require nyholm/psr7 psr/http-server-middleware
-```
+No package is required: crystal includes a default implementation of the PSR-7 messages and, when `psr/http-message` and `psr/http-server-*` aren't installed, it declares their interfaces.
+Interfaces are declared only when requested (e.g. type hinted or implemented) and after any other autoloader, so installed packages always win.
 
 Routes not using PSR-7 work exactly as before.
 
@@ -59,7 +56,16 @@ $mf('/admin', $mf('http')->pipe(
 
 ## Configuration
 
-Messages are created using a [PSR-17](https://www.php-fig.org/psr/psr-17/) factory, `Nyholm\Psr7\Factory\Psr17Factory` and `GuzzleHttp\Psr7\HttpFactory` are detected automatically. Any other factory implementing the server request, URI, stream and uploaded file factory interfaces can be used:
+Messages are created using a [PSR-17](https://www.php-fig.org/psr/psr-17/) factory:
+
+1. the one defined with `setFactory()`
+2. `Nyholm\Psr7\Factory\Psr17Factory` or `GuzzleHttp\Psr7\HttpFactory`, when installed
+3. the default implementation, based on anonymous classes
+
+The default implementation follows `psr/http-message` 1.x signatures, so it isn't available when `psr/http-message` 2.x is installed: in that case install an implementation too (e.g. `composer require nyholm/psr7`).
+When using Composer, include its autoloader before `crystal.php`.
+
+Any other factory implementing the server request, URI, stream and uploaded file factory interfaces can be used:
 
 ```php
 $mf('http')->setFactory($factory);

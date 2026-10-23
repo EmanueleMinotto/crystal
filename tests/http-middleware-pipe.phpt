@@ -1,13 +1,8 @@
 --TEST--
 PSR-15 middlewares piped in a request handler
---SKIPIF--
-<?php require __DIR__.'/http/skipif.inc'; ?>
 --FILE--
 <?php
 
-require_once __DIR__.'/../vendor/autoload.php';
-
-use Nyholm\Psr7\Response;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -44,8 +39,10 @@ $pipe = $mf('http')->pipe(
         return $handler->handle($request->withAttribute('trace', array_merge($request->getAttribute('trace'), ['callable'])));
     },
     new TraceMiddleware('last'),
-    function (ServerRequestInterface $request) {
-        return new Response(200, [], implode(' > ', $request->getAttribute('trace')));
+    function (ServerRequestInterface $request) use ($mf) {
+        $factory = $mf('http')->getFactory();
+
+        return $factory->createResponse()->withBody($factory->createStream(implode(' > ', $request->getAttribute('trace'))));
     }
 );
 
