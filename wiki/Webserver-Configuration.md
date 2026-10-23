@@ -48,7 +48,7 @@ server {
     # location ~ ^/(index|index_dev)\.php(/|$) {
     location ~ ^/index\.php(/|$) {
         # the ubuntu default
-        fastcgi_pass   unix:/var/run/php5-fpm.sock;
+        fastcgi_pass   unix:/run/php/php-fpm.sock;
         # for running on centos
         #fastcgi_pass   unix:/var/run/php-fpm/www.sock;
 
