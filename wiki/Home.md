@@ -26,6 +26,7 @@ $mf('/', function () {
 -   a [[Template Engine]]
 -   a [[Logger]] based on [PSR-3](https://www.php-fig.org/psr/psr-3/)
 -   a [[Database]] interaction system
+-   database [[Migrations]]
 -   a [[Cache]] system based on APCu
 -   an [[Event Listener]] to listen and dispatch events
 -   **no external dependencies, just a single PHP file!**
