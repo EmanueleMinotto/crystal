@@ -28,5 +28,6 @@ $mf('/', function () {
 -   a [[Database]] interaction system
 -   database [[Migrations]]
 -   a [[Cache]] system based on APCu
+-   a [[Mailer]] to send emails using `mail()` or SMTP
 -   an [[Event Listener]] to listen and dispatch events
 -   **no external dependencies, just a single PHP file!**

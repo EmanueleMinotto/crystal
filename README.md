@@ -27,6 +27,7 @@ $mf('/', function () {
 -   database [Migrations](https://github.com/EmanueleMinotto/crystal/wiki/Migrations)
 -   an [Event Listener](https://github.com/EmanueleMinotto/crystal/wiki/Event-Listener) to listen and dispatch events
 -   a [Cache](https://github.com/EmanueleMinotto/crystal/wiki/Cache) system based on APCu
+-   a [Mailer](https://github.com/EmanueleMinotto/crystal/wiki/Mailer) to send emails using `mail()` or SMTP
 -   **no external dependencies, just a single PHP file!**
 
 ## Documentation
