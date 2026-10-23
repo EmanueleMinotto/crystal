@@ -28,6 +28,7 @@ $mf('/', function () {
 -   an [Event Listener](https://github.com/EmanueleMinotto/crystal/wiki/Event-Listener) to listen and dispatch events
 -   a [Cache](https://github.com/EmanueleMinotto/crystal/wiki/Cache) system based on APCu
 -   a [Mailer](https://github.com/EmanueleMinotto/crystal/wiki/Mailer) to send emails using `mail()` or SMTP
+-   optional [HTTP Messages](https://github.com/EmanueleMinotto/crystal/wiki/HTTP-Messages) support for [PSR-7](https://www.php-fig.org/psr/psr-7/) and [PSR-15](https://www.php-fig.org/psr/psr-15/)
 -   **no external dependencies, just a single PHP file!**
 
 ## Documentation

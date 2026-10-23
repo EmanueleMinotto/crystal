@@ -1,7 +1,9 @@
 {
     "require-dev": {
         "friendsofphp/php-cs-fixer": "*",
-        "phpunit/phpunit": "*"
+        "phpunit/phpunit": "*",
+        "nyholm/psr7": "*",
+        "psr/http-server-middleware": "*"
     },
     "scripts": {
         "build": "php src/build.php && php-cs-fixer --config=src/.php-cs-fixer.php fix --allow-risky=yes --quiet",

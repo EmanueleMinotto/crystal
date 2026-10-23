@@ -36,12 +36,22 @@ return new class () {
      */
     private $base;
 
+    /**
+     * PSR-7 and PSR-15 integration used by the router.
+     *
+     * @var object
+     */
+    private $http;
+
     public function __construct()
     {
         // services write on $deps, so it has to be bound to the property
         $deps = &$this->deps;
 
         ### PHP 7 FEATURES PLACEHOLDER ###
+
+        // the router keeps its own reference, so overriding the service is safe
+        $this->http = $deps['http'];
     }
 
     public function __invoke()
@@ -51,6 +61,7 @@ return new class () {
         $matches = &$this->matches;
         $deps = &$this->deps;
         $base = &$this->base;
+        $http = $this->http;
 
         // base path for each route defined once
         if (is_null($base)) {
@@ -167,7 +178,10 @@ return new class () {
          *
          * @return void
          */
-        $deploy = function ($regex, $cb, $method = 'GET', $priority = 0) use (&$deploy, &$matches, $base) {
+        $deploy = function ($regex, $cb, $method = 'GET', $priority = 0) use (&$deploy, &$matches, $base, $http) {
+            // PSR-15 request handlers are accepted as callbacks
+            $cb = $http->toCallable($cb);
+
             // Checking well formed call
             assert(is_string($regex));
             assert(is_callable($cb));
@@ -188,6 +202,19 @@ return new class () {
                 preg_match('#'.$method.'#', $_SERVER['REQUEST_METHOD']) &&
                 preg_match('#^'.$base.$regex.'$#', parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), $submatches)
             ) {
+                // Snippet used to extract parameter from a callable object.
+                $reflector = (is_string($cb) && function_exists($cb)) || $cb instanceof Closure
+                    ? new ReflectionFunction($cb)
+                    : new ReflectionMethod($cb);
+
+                // PSR-7 request injected when type hinted, returned responses are emitted
+                if ($http->wantsRequest($reflector)) {
+                    $submatches = $http->arguments($reflector, $submatches);
+                    array_unshift($submatches, $http->responder($cb));
+
+                    return call_user_func_array('register_shutdown_function', $submatches);
+                }
+
                 // Named subpatterns are allowed
                 // http://it2.php.net/manual/en/regexp.reference.subpatterns.php
                 $submatches = array_unique($submatches);
@@ -197,10 +224,6 @@ return new class () {
                 // subpattern, and so on.
                 unset($submatches[0]);
 
-                // Snippet used to extract parameter from a callable object.
-                $reflector = (is_string($cb) && function_exists($cb)) || $cb instanceof Closure
-                    ? new ReflectionFunction($cb)
-                    : new ReflectionMethod($cb);
                 $params = [];
 
                 foreach ($reflector->getParameters() as $parameter) {
@@ -212,7 +235,7 @@ return new class () {
                 if (array_intersect(array_keys($params), array_keys($submatches))) {
                     $submatches = array_merge($params, $submatches);
                 }
-                array_unshift($submatches, $cb);
+                array_unshift($submatches, $http->responder($cb));
 
                 // register_shutdown_function is used to call added functions when script ends
                 // http://it2.php.net/manual/en/function.register-shutdown-function.php
