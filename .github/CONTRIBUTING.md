@@ -8,7 +8,7 @@ Contributes must follow these rules:
 -   commit messages must follow the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification (e.g. `fix: keep service instances between calls`)
 -   PECL extensions are allowed only if the existence is checked using `extension_loaded` and if the functionality doesn't have side effects but adds functionalities or improves the existing features
 
-Code can be split into `src/php5` folder for PHP 5.3+ compatible code and into `src/php7` folder for PHP 7+ compatible code.
+Code must be compatible with PHP 7.0+ and can be split into the `src/php7` folder.
 Polyfills can be added in the `src/polyfills` folder.
 See existing files for examples.
 
