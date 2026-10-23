@@ -12,6 +12,8 @@ $mf('/', function () {
 });
 ```
 
+`$mf` is an instance of an invokable anonymous class, so it can be used anywhere a [`callable`](http://php.net/manual/en/language.types.callable.php) is accepted (but it isn't a `Closure`).
+
 ## Features
 
 -   requested URLs matched using regular expressions
