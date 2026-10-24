@@ -1,0 +1,9 @@
+{
+    "app": {
+        "debug": true
+    },
+    "database": {
+        "port": 3307
+    },
+    "hosts": ["c"]
+}
