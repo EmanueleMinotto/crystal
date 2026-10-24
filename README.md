@@ -10,6 +10,10 @@ $mf = require_once('crystal.php');
 $mf('/', function () {
     echo 'Hello World!';
 });
+
+$mf->get('/users/{id:\d+}', function ($id) {
+    return ['id' => (int) $id]; // {"id":42}
+});
 ```
 
 ## Features
@@ -29,8 +33,21 @@ $mf('/', function () {
 -   a [Cache](https://github.com/EmanueleMinotto/crystal/wiki/Cache) system with APCu, array, filesystem, database, Memcached and Redis drivers, namespaces and chains
 -   a [Mailer](https://github.com/EmanueleMinotto/crystal/wiki/Mailer) to send emails using `mail()` or SMTP
 -   a [Configuration](https://github.com/EmanueleMinotto/crystal/wiki/Configuration) system with `.env` files support
+-   HTTP [Request and Response](https://github.com/EmanueleMinotto/crystal/wiki/Request-and-Response) objects, callbacks can return arrays sent as JSON
+-   route helpers, `{id:\d+}` placeholders and [groups](https://github.com/EmanueleMinotto/crystal/wiki/CGI-Usage)
+-   automatic `404`, `405` and `OPTIONS` responses
+-   [Middlewares](https://github.com/EmanueleMinotto/crystal/wiki/Middleware) for every request, groups and routes
+-   [Errors](https://github.com/EmanueleMinotto/crystal/wiki/Errors) rendered as [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details
+-   [CORS](https://github.com/EmanueleMinotto/crystal/wiki/CORS), [Authentication](https://github.com/EmanueleMinotto/crystal/wiki/Authentication) (JWT, Bearer tokens, API keys) and [Rate Limiting](https://github.com/EmanueleMinotto/crystal/wiki/Rate-Limiting) middlewares
+-   a [Validator](https://github.com/EmanueleMinotto/crystal/wiki/Validator) for the request input
+-   [Pagination](https://github.com/EmanueleMinotto/crystal/wiki/Pagination) of database tables and arrays
+-   HTTP caching with ETag and `304 Not Modified` responses
+-   in-process [Testing](https://github.com/EmanueleMinotto/crystal/wiki/Testing) of routes
+-   [OpenAPI](https://github.com/EmanueleMinotto/crystal/wiki/OpenAPI) document generation
 -   **no external dependencies, just a single PHP file!**
 
 ## Documentation
 
 https://github.com/EmanueleMinotto/crystal/wiki
+
+Building an API? Start from [Building a REST API](https://github.com/EmanueleMinotto/crystal/wiki/Building-a-REST-API).

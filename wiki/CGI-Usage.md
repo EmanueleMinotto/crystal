@@ -91,3 +91,73 @@ $mf($mf('router:not-found'), function () {
     echo 'Error 404: Page not Found';
 });
 ```
+
+## Method not allowed
+
+When the requested URL matches a route but the request method doesn't, a `405 Method Not Allowed` response with the `Allow` header is sent automatically, and `OPTIONS` requests receive a `204 No Content` response listing the allowed methods.
+
+To customize the 405 response use the `router:method-not-allowed` pattern (the method argument is ignored), allowed methods are returned by `router:allowed-methods`:
+```php
+$mf($mf('router:method-not-allowed'), function () use ($mf) {
+    echo 'Use one of: ' . implode(', ', $mf('router:allowed-methods'));
+});
+```
+
+Requests not matching any route receive a `404 Not Found` response, see [[Errors]] for the response format.
+
+## Route helpers and placeholders
+
+Routes can be defined with a method helper too, `get` routes match `HEAD` requests as well:
+```php
+$mf->get('/users', function () { /* ... */ });
+$mf->post('/users', function () { /* ... */ });
+$mf->put('/users/{id}', function ($id) { /* ... */ });
+$mf->patch('/users/{id}', function ($id) { /* ... */ });
+$mf->delete('/users/{id}', function ($id) { /* ... */ });
+$mf->options('/users', function () { /* ... */ });
+$mf->any('/ping', function () { /* ... */ });
+$mf->route(['GET', 'POST'], '/search', function () { /* ... */ });
+```
+
+`{name}` placeholders match a path segment, `{name:regex}` placeholders use a custom regular expression. Both are converted to named subpatterns, so they work with the `$mf()` function too:
+```php
+$mf->get('/users/{id:\d+}/posts/{slug}', function ($slug, $id) {
+    // ...
+});
+```
+
+Helpers accept an array of options as last argument:
+```php
+$mf->get('/users/{id:\d+}', $callback, [
+    'priority' => 1,                       // same as the 4th argument of $mf()
+    'middleware' => [$auth],               // see Middleware
+    'name' => 'getUser',                   // used as OpenAPI operationId
+    'openapi' => ['summary' => 'Get user'], // see OpenAPI
+]);
+```
+
+## Groups
+
+Groups share a prefix, [[Middleware]] and [[OpenAPI]] options, and can be nested:
+```php
+$mf->group('/api/v1', function ($mf) {
+    $mf->get('/users', function () { /* ... */ }); // GET /api/v1/users
+}, ['middleware' => [$auth], 'openapi' => ['tags' => ['users']]]);
+```
+
+## Returning values
+
+Callbacks can return a value instead of printing the output:
+
+-   arrays, `stdClass` and `JsonSerializable` objects are sent as JSON
+-   strings are appended to the output
+-   response objects are sent with their status code and headers, see [[Request and Response]]
+
+```php
+$mf->get('/users/{id:\d+}', function ($id) {
+    return ['id' => (int) $id];
+});
+// {"id":42}
+```
+
+The output of each callback is buffered and sent when all the matched callbacks are executed, status codes and headers set using `http_response_code()` and `header()` still work.

@@ -31,4 +31,17 @@ $mf('/', function () {
 -   a [[Mailer]] to send emails using `mail()` or SMTP
 -   a [[Configuration]] system with `.env` files support
 -   an [[Event Listener]] to listen and dispatch events
+-   HTTP [[Request and Response]] objects, callbacks can return arrays sent as JSON
+-   route helpers (`$mf->get()`, `$mf->post()`...), `{id:\d+}` placeholders and groups, see [[CGI Usage]]
+-   automatic `404`, `405` and `OPTIONS` responses
+-   [[Middleware]] for every request, groups and routes
+-   [[Errors]] rendered as [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details
+-   [[CORS]], [[Authentication]] (JWT, Bearer tokens, API keys) and [[Rate Limiting]] middlewares
+-   a [[Validator]] for the request input
+-   [[Pagination]] of database tables and arrays
+-   HTTP caching with ETag and `304 Not Modified` responses
+-   in-process [[Testing]] of routes
+-   [[OpenAPI]] document generation
 -   **no external dependencies, just a single PHP file!**
+
+New to crystal? Start [[Building a REST API]].
