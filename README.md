@@ -28,6 +28,7 @@ $mf('/', function () {
 -   an [Event Listener](https://github.com/EmanueleMinotto/crystal/wiki/Event-Listener) to listen and dispatch events
 -   a [Cache](https://github.com/EmanueleMinotto/crystal/wiki/Cache) system with APCu, array, filesystem, database, Memcached and Redis drivers, namespaces and chains
 -   a [Mailer](https://github.com/EmanueleMinotto/crystal/wiki/Mailer) to send emails using `mail()` or SMTP
+-   a [Configuration](https://github.com/EmanueleMinotto/crystal/wiki/Configuration) system with `.env` files support
 -   **no external dependencies, just a single PHP file!**
 
 ## Documentation
