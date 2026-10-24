@@ -43,7 +43,6 @@ $mf->get('/users/{id:\d+}', function ($id) {
 -   [Pagination](https://github.com/EmanueleMinotto/crystal/wiki/Pagination) of database tables and arrays
 -   HTTP caching with ETag and `304 Not Modified` responses
 -   in-process [Testing](https://github.com/EmanueleMinotto/crystal/wiki/Testing) of routes
--   [OpenAPI](https://github.com/EmanueleMinotto/crystal/wiki/OpenAPI) document generation
 -   **no external dependencies, just a single PHP file!**
 
 ## Documentation

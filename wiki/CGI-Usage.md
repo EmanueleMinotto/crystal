@@ -131,18 +131,17 @@ Helpers accept an array of options as last argument:
 $mf->get('/users/{id:\d+}', $callback, [
     'priority' => 1,                       // same as the 4th argument of $mf()
     'middleware' => [$auth],               // see Middleware
-    'name' => 'getUser',                   // used as OpenAPI operationId
-    'openapi' => ['summary' => 'Get user'], // see OpenAPI
+    'name' => 'getUser',                   // listed by $mf->routes()
 ]);
 ```
 
 ## Groups
 
-Groups share a prefix, [[Middleware]] and [[OpenAPI]] options, and can be nested:
+Groups share a prefix and [[Middleware]], and can be nested:
 ```php
 $mf->group('/api/v1', function ($mf) {
     $mf->get('/users', function () { /* ... */ }); // GET /api/v1/users
-}, ['middleware' => [$auth], 'openapi' => ['tags' => ['users']]]);
+}, ['middleware' => [$auth]]);
 ```
 
 ## Returning values
@@ -161,3 +160,11 @@ $mf->get('/users/{id:\d+}', function ($id) {
 ```
 
 The output of each callback is buffered and sent when all the matched callbacks are executed, status codes and headers set using `http_response_code()` and `header()` still work.
+
+## Routes list
+
+Defined routes can be listed, for example to print them in a debug page:
+```php
+$mf->routes();
+// [['methods' => ['GET', 'HEAD'], 'path' => '/users/{id:\d+}', 'name' => 'getUser', 'priority' => 0]]
+```

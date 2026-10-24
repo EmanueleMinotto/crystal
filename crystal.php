@@ -5008,8 +5008,7 @@ return new class () {
      * Options:
      *   priority   — from 0 (high) to ~1.8e308 (low), default 0
      *   middleware — list of callables `function ($request, callable $next)`
-     *   name       — route name, used as OpenAPI operationId
-     *   openapi    — OpenAPI operation object merged in `openapi()`
+     *   name       — route name, listed by `routes()`
      *
      * @param string|string[] $methods Request methods, a regular expression or a list
      * @param string          $pattern Regular expression or `{name}`/`{name:regex}` placeholders
@@ -5021,13 +5020,11 @@ return new class () {
     public function route($methods, string $pattern, callable $cb, array $options = [])
     {
         $middleware = isset($options['middleware']) ? (array) $options['middleware'] : [];
-        $openapi = $options['openapi'] ?? [];
         $prefix = '';
 
         foreach ($this->groups as $group) {
             $prefix .= $group['prefix'];
             $middleware = array_merge($group['middleware'], $middleware);
-            $openapi = array_merge_recursive($group['openapi'], $openapi);
         }
 
         $special = static::$methodNotAllowed === $pattern || isset($this->notFound[$pattern]);
@@ -5055,7 +5052,6 @@ return new class () {
             'priority' => $options['priority'] ?? 0,
             'middleware' => $middleware,
             'name' => $options['name'] ?? null,
-            'openapi' => $openapi,
             'special' => $special,
         ];
 
@@ -5100,11 +5096,11 @@ return new class () {
     }
 
     /**
-     * Define routes sharing a prefix, middlewares and OpenAPI options.
+     * Define routes sharing a prefix and middlewares.
      *
      * @param string   $prefix  Prefix prepended to every route pattern
      * @param callable $routes  Function receiving the framework instance
-     * @param array    $options `middleware` and `openapi` options
+     * @param array    $options `middleware` option
      *
      * @return $this
      */
@@ -5113,7 +5109,6 @@ return new class () {
         $this->groups[] = [
             'prefix' => $prefix,
             'middleware' => isset($options['middleware']) ? (array) $options['middleware'] : [],
-            'openapi' => $options['openapi'] ?? [],
         ];
 
         try {
@@ -5220,56 +5215,6 @@ return new class () {
     }
 
     /**
-     * Generate an OpenAPI 3 document from the defined routes.
-     *
-     * Routes that can't be represented as an OpenAPI path are skipped.
-     *
-     * @param array $info  OpenAPI info object, `title` and `version` are required
-     * @param array $extra Root keys merged into the document (servers, components...)
-     *
-     * @return array
-     */
-    public function openapi(array $info = [], array $extra = [])
-    {
-        $paths = [];
-
-        foreach ($this->routes as $route) {
-            if ($route['special'] || false === ($path = $this->openapiPath($route['path'], $parameters))) {
-                continue;
-            }
-
-            $methods = array_diff($this->routeMethods($route), is_null($route['list']) ? ['HEAD', 'OPTIONS'] : ['HEAD']);
-
-            foreach ($methods as $method) {
-                $operation = $route['openapi'];
-
-                if (!empty($route['name']) && !isset($operation['operationId'])) {
-                    $operation['operationId'] = $route['name'];
-                }
-
-                if (!empty($parameters)) {
-                    $operation['parameters'] = array_merge(
-                        $parameters,
-                        $operation['parameters'] ?? []
-                    );
-                }
-
-                if (empty($operation['responses'])) {
-                    $operation['responses'] = ['200' => ['description' => 'OK']];
-                }
-
-                $paths[$path][strtolower($method)] = $operation;
-            }
-        }
-
-        return array_merge([
-            'openapi' => '3.0.3',
-            'info' => $info + ['title' => 'API', 'version' => '1.0.0'],
-            'paths' => empty($paths) ? new stdClass() : $paths,
-        ], $extra);
-    }
-
-    /**
      * Resolve a dependency.
      */
     private function service(string $id)
@@ -5298,13 +5243,8 @@ return new class () {
         $this->registered = true;
 
         register_shutdown_function(function () {
-            if ($this->testing) {
-                return;
-            }
-
-            if ($this->isCli()) {
-                $this->console();
-
+            // routes defined in command line mode can only be dispatched by handle()
+            if ($this->testing || $this->isCli()) {
                 return;
             }
 
@@ -5323,24 +5263,6 @@ return new class () {
 
             echo (string) $response->getBody();
         });
-    }
-
-    /**
-     * Built-in commands available in command line mode.
-     */
-    private function console()
-    {
-        $command = $GLOBALS['argv'][1] ?? null;
-
-        if ('crystal:routes' === $command) {
-            foreach ($this->routes() as $route) {
-                echo rtrim(sprintf('%-24s %-40s %s', implode('|', $route['methods']), $route['path'], $route['name'])), "\n";
-            }
-        }
-
-        if ('crystal:openapi' === $command) {
-            echo json_encode($this->openapi(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
-        }
     }
 
     /**
@@ -5671,42 +5593,5 @@ return new class () {
         }
 
         return $merged;
-    }
-
-    /**
-     * Convert a route path to an OpenAPI path, false if it isn't possible.
-     *
-     * @return string|false
-     */
-    private function openapiPath(string $path, &$parameters)
-    {
-        $parameters = [];
-
-        $path = preg_replace_callback(
-            '#\(\?P?<([a-zA-Z_][a-zA-Z0-9_]*)>((?:[^()]++|\((?2)\))*)\)|\{([a-zA-Z_][a-zA-Z0-9_]*)(?::((?:[^{}]++|\{[^{}]*\})+))?\}#',
-            function ($match) use (&$parameters) {
-                $name = empty($match[1]) ? $match[3] : $match[1];
-                $regex = empty($match[1]) ? ($match[4] ?? '') : $match[2];
-
-                $parameters[] = [
-                    'name' => $name,
-                    'in' => 'path',
-                    'required' => true,
-                    'schema' => ['type' => preg_match('#^(\\\\d|\[0-9\])[+*]$#', $regex) ? 'integer' : 'string'],
-                ];
-
-                return '{'.$name.'}';
-            },
-            $path
-        );
-
-        // escaped characters are literals
-        $path = preg_replace('#\\\\([/.\-])#', '$1', $path);
-
-        if (preg_match('#[()\[\]*+?|^$\\\\]#', $path)) {
-            return false;
-        }
-
-        return '' === $path ? '/' : $path;
     }
 };

@@ -70,12 +70,7 @@ $mf->group('/api/books', function ($mf) use ($db, $findBook, $rules) {
     }, ['name' => 'deleteBook']);
 }, [
     'middleware' => [$mf('ratelimit')->middleware(['limit' => 120])],
-    'openapi' => ['tags' => ['books']],
 ]);
-
-$mf->get('/openapi.json', function () use ($mf) {
-    return $mf->openapi(['title' => 'Books API', 'version' => '1.0.0']);
-});
 
 return $mf;
 ```

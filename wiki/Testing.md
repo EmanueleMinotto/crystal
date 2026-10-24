@@ -23,9 +23,4 @@ In command line mode `header()` and `http_response_code()` have no effect, so in
 
 ## Routes in command line mode
 
-Routes can be defined in command line mode too, so the same application file can be loaded by tests and scripts. Two commands are available:
-
-```bash
-php index.php crystal:routes   # list routes
-php index.php crystal:openapi  # print the OpenAPI document, see OpenAPI
-```
+Routes can be defined in command line mode too, so the same application file can be loaded by tests and scripts, they're dispatched only calling `handle()`.
