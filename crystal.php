@@ -114,13 +114,17 @@ if (!function_exists('is_iterable')) {
 return new class () {
     /**
      * Pattern returned by `router:method-not-allowed`, resolved when the request is dispatched.
+     *
+     * @var string
      */
-    public const METHOD_NOT_ALLOWED = "\0router:method-not-allowed";
+    private static $methodNotAllowed = "\0router:method-not-allowed";
 
     /**
      * Methods checked when an URL is matched with a different request method.
+     *
+     * @var string[]
      */
-    public const METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
+    private static $methods = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
 
     /**
      * Used to store functions and allow recursive callbacks in CLI mode.
@@ -4901,7 +4905,7 @@ return new class () {
                         break;
 
                     case 'router:method-not-allowed':
-                        return static::METHOD_NOT_ALLOWED;
+                        return static::$methodNotAllowed;
 
                     case 'router:allowed-methods':
                         $request = $this->service('request');
@@ -5026,7 +5030,7 @@ return new class () {
             $openapi = array_merge_recursive($group['openapi'], $openapi);
         }
 
-        $special = static::METHOD_NOT_ALLOWED === $pattern || isset($this->notFound[$pattern]);
+        $special = static::$methodNotAllowed === $pattern || isset($this->notFound[$pattern]);
         $path = $special ? $pattern : $prefix.$pattern;
         $regex = $special ? $pattern : $this->compile($path);
 
@@ -5392,7 +5396,7 @@ return new class () {
                 foreach ($queue as $item) {
                     $route = $item[2];
 
-                    if (static::METHOD_NOT_ALLOWED === $route['regex']) {
+                    if (static::$methodNotAllowed === $route['regex']) {
                         if ($this->hasMatch($method, $path, $base) || empty($allowed = $this->allowedMethods($path, $base))) {
                             continue;
                         }
@@ -5525,7 +5529,7 @@ return new class () {
             }
         }
 
-        return array_values(array_intersect(static::METHODS, $allowed));
+        return array_values(array_intersect(static::$methods, $allowed));
     }
 
     /**
@@ -5539,7 +5543,7 @@ return new class () {
             return $route['list'];
         }
 
-        return array_values(array_filter(static::METHODS, function ($method) use ($route) {
+        return array_values(array_filter(static::$methods, function ($method) use ($route) {
             return preg_match('#'.$route['methods'].'#', $method);
         }));
     }
