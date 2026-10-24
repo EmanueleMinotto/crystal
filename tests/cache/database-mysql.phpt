@@ -55,6 +55,17 @@ $mf(function () use ($mf) {
     $cache->set('to_clear', 'yes');
     $cache->clear();
     echo ($cache->has('to_clear') ? '1' : '0') . "\n";
+    // Test namespaces
+    $users = $cache->withNamespace('users');
+    $admins = $users->withNamespace('admins');
+    $cache->set('name', 'root');
+    $users->set('name', 'user');
+    $admins->set('name', 'admin');
+    echo $cache->get('name') . "," . $users->get('name') . "," . $admins->get('name') . "\n";
+
+    // Test namespace clear
+    $users->clear();
+    echo $cache->get('name', 'none') . "," . $users->get('name', 'none') . "," . $admins->get('name', 'none') . "\n";
 });
 ?>
 --EXPECT--
@@ -65,3 +76,5 @@ default
 1,2,none
 0,0
 0
+root,user,admin
+root,none,none

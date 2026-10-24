@@ -70,3 +70,31 @@ jobs:
                   CRYSTAL_MYSQL_DSN: "mysql:host=127.0.0.1;dbname=crystal_test"
                   CRYSTAL_MYSQL_USER: root
                   CRYSTAL_MYSQL_PASS: root
+
+    redis-memcached-cache:
+        runs-on: ubuntu-latest
+        services:
+            redis:
+                image: redis:7
+                ports:
+                    - 6379:6379
+            memcached:
+                image: memcached:1.6
+                ports:
+                    - 11211:11211
+
+        name: Redis and Memcached cache drivers
+        steps:
+            - uses: actions/checkout@v2
+
+            - uses: shivammathur/setup-php@v2
+              with:
+                  php-version: "8.4"
+                  coverage: none
+                  extensions: redis, memcached
+
+            - run: "composer install"
+            - run: "composer test"
+              env:
+                  CRYSTAL_REDIS_HOST: 127.0.0.1
+                  CRYSTAL_MEMCACHED_HOST: 127.0.0.1
