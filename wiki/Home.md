@@ -36,6 +36,7 @@ $mf('/', function () {
 -   [[Validation]] of the input data
 -   [[Errors]] handling with error pages, 404 and 405 responses
 -   [[CORS]] headers and automatic `OPTIONS` (preflight) responses
+-   [[Rate Limiting]] of routes and actions, with 429 responses
 -   [[Session]] with hardened cookies and [[CSRF]] protection
 -   **no external dependencies, just a single PHP file!**
 

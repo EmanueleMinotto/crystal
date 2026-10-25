@@ -34,6 +34,7 @@ $mf('/', function () {
 -   [Validation](https://github.com/EmanueleMinotto/crystal/wiki/Validation) of the input data
 -   [Error handling](https://github.com/EmanueleMinotto/crystal/wiki/Errors) with error pages, 404 and 405 responses
 -   [CORS](https://github.com/EmanueleMinotto/crystal/wiki/CORS) headers and automatic `OPTIONS` (preflight) responses
+-   [Rate limiting](https://github.com/EmanueleMinotto/crystal/wiki/Rate-Limiting) of routes and actions, with 429 responses
 -   [Sessions](https://github.com/EmanueleMinotto/crystal/wiki/Session) with hardened cookies and [CSRF](https://github.com/EmanueleMinotto/crystal/wiki/CSRF) protection
 -   **no external dependencies, just a single PHP file!**
 
