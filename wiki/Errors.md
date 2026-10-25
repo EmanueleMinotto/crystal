@@ -50,6 +50,7 @@ $mf('errors')->abort(429, 'Slow down', ['Retry-After' => 60]);
 ```
 
 Any exception with a `getStatusCode()` method (and optionally `getHeaders()`), like the Symfony HTTP exceptions, is handled the same way.
+Exceptions with a `getErrors()` method, like the ones thrown by the [[Validation]], list their errors in the response.
 
 ## Not found and method not allowed
 

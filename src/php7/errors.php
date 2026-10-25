@@ -268,6 +268,9 @@ $deps['errors'] = new class ($deps) {
             ? $exception->getMessage()
             : '';
 
+        // validation errors, field => messages
+        $fields = !is_null($exception) && method_exists($exception, 'getErrors') ? (array) $exception->getErrors() : [];
+
         $response = $this->service('response')->setStatus($status);
         $accept = (string) $request->header('Accept', '');
 
@@ -276,6 +279,10 @@ $deps['errors'] = new class ($deps) {
 
             if ('' !== $message) {
                 $error['message'] = $message;
+            }
+
+            if (!empty($fields)) {
+                $error['errors'] = $fields;
             }
 
             if ($this->debug && !is_null($exception)) {
@@ -292,6 +299,18 @@ $deps['errors'] = new class ($deps) {
         };
 
         $details = '' === $message ? '' : '<p>'.$e($message).'</p>';
+
+        if (!empty($fields)) {
+            $details .= '<ul>';
+
+            foreach ($fields as $messages) {
+                foreach ((array) $messages as $text) {
+                    $details .= '<li>'.$e($text).'</li>';
+                }
+            }
+
+            $details .= '</ul>';
+        }
 
         if ($this->debug && !is_null($exception)) {
             $details .= sprintf(
