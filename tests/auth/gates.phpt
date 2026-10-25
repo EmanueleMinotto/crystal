@@ -42,6 +42,12 @@ $mf(function () use ($mf) {
         echo $exception->getMessage() . "\n";
     }
 
+    try {
+        $auth->login($user, true);
+    } catch (Exception $exception) {
+        echo $exception->getMessage() . "\n";
+    }
+
     $auth->logout();
     var_dump($auth->check(), $auth->id());
 });
@@ -56,5 +62,6 @@ bool(false)
 bool(false)
 Gate "undefined" not defined.
 The user has no "id" field.
+No provider defined to remember users.
 bool(false)
 NULL

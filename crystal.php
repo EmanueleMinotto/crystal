@@ -223,6 +223,41 @@ return new class () {
             private $dummyHash;
 
             /**
+             * Callback loading a user by its bearer token.
+             *
+             * @var callable|null
+             */
+            private $findByToken;
+
+            /**
+             * Whether the current user has been authenticated by a bearer token.
+             *
+             * @var bool
+             */
+            private $viaToken = false;
+
+            /**
+             * Callbacks storing, finding and removing the remember-me tokens, and their lifetime.
+             *
+             * @var array|null
+             */
+            private $remember;
+
+            /**
+             * Name of the remember-me cookie.
+             *
+             * @var string
+             */
+            private $rememberCookie = 'crystal_remember';
+
+            /**
+             * Maximum login attempts and the seconds before they're reset.
+             *
+             * @var array|null
+             */
+            private $throttle;
+
+            /**
              * @param array $deps Dynamic set of dependencies.
              */
             public function __construct(array &$deps = [])
@@ -250,17 +285,29 @@ return new class () {
              * Load users from a table using the database service.
              *
              * Outdated password hashes are updated automatically.
+             *
+             * @param string      $table      Users table
+             * @param string      $identifier Column used to log in
+             * @param string|null $token      Column containing the hashed bearer tokens
              */
-            public function useDatabase(string $table = 'users', string $identifier = 'email')
+            public function useDatabase(string $table = 'users', string $identifier = 'email', $token = null)
             {
+                assert(is_null($token) || is_string($token));
+
                 $this->setProvider(function ($id) use ($table) {
-                    return $this->database()->read($table, $id, $this->fields['id']);
+                    return $this->service('database')->read($table, $id, $this->fields['id']);
                 }, function ($value) use ($table, $identifier) {
-                    return $this->database()->read($table, $value, $identifier);
+                    return $this->service('database')->read($table, $value, $identifier);
                 });
 
+                if (!is_null($token)) {
+                    $this->setTokenProvider(function ($value) use ($table, $token) {
+                        return $this->service('database')->read($table, $this->hashToken($value), $token);
+                    });
+                }
+
                 $this->onRehash(function ($user, $hash) use ($table) {
-                    $this->database()->update(
+                    $this->service('database')->update(
                         $table,
                         [$this->fields['password'] => $hash],
                         $this->field($user, 'id'),
@@ -296,6 +343,91 @@ return new class () {
                 $this->sessionKey = $key;
             }
 
+            /**
+             * Limit the failed login attempts for each identifier and IP address.
+             *
+             * @param int $maxAttempts  Failed attempts allowed
+             * @param int $decaySeconds Seconds before the attempts are reset
+             */
+            public function throttle(int $maxAttempts = 5, int $decaySeconds = 60)
+            {
+                $this->throttle = [
+                    'max' => $maxAttempts,
+                    'decay' => $decaySeconds,
+                ];
+            }
+
+            /**
+             * Set the callback loading a user by its bearer token, it returns the user or null.
+             */
+            public function setTokenProvider(callable $findByToken)
+            {
+                $this->findByToken = $findByToken;
+                $this->user = false;
+            }
+
+            /**
+             * Set the callbacks used to remember users after the session ends.
+             *
+             * @param callable $save     Receives selector, hashed validator, user identifier and expiration timestamp
+             * @param callable $find     Receives the selector, returns ['hash' => ..., 'user_id' => ..., 'expires' => ...] or null
+             * @param callable $forget   Receives the selector
+             * @param int      $lifetime Seconds before the token expires
+             */
+            public function setRememberProvider(callable $save, callable $find, callable $forget, int $lifetime = 2592000)
+            {
+                $this->remember = [
+                    'save' => $save,
+                    'find' => $find,
+                    'forget' => $forget,
+                    'lifetime' => $lifetime,
+                ];
+            }
+
+            /**
+             * Store the remember-me tokens in a table using the database service.
+             *
+             * The table is created on first use.
+             */
+            public function rememberWithDatabase(string $table = 'crystal_remember_tokens', int $lifetime = 2592000)
+            {
+                $created = false;
+                $database = function () use ($table, &$created) {
+                    $database = $this->service('database');
+
+                    if (!$created) {
+                        $database->query(sprintf(
+                            'CREATE TABLE IF NOT EXISTS `%s` (selector VARCHAR(255) NOT NULL PRIMARY KEY, hash VARCHAR(255) NOT NULL, user_id VARCHAR(255) NOT NULL, expires INT NOT NULL)',
+                            $table
+                        ));
+                        $created = true;
+                    }
+
+                    return $database;
+                };
+
+                $this->setRememberProvider(function ($selector, $hash, $id, $expires) use ($database, $table) {
+                    $database()->create($table, [
+                        'selector' => $selector,
+                        'hash' => $hash,
+                        'user_id' => $id,
+                        'expires' => $expires,
+                    ]);
+                }, function ($selector) use ($database, $table) {
+                    return $database()->read($table, $selector, 'selector');
+                }, function ($selector) use ($database, $table) {
+                    $database()->delete($table, $selector, 'selector');
+                }, $lifetime);
+            }
+
+            /**
+             * Change the name of the remember-me cookie.
+             */
+            public function setRememberCookie(string $name)
+            {
+                $this->rememberCookie = $name;
+            }
+
             // === PASSWORDS ===
             /**
              * @link https://www.php.net/manual/en/function.password-hash.php
@@ -321,14 +453,34 @@ return new class () {
                 return password_needs_rehash($hash, PASSWORD_DEFAULT);
             }
 
+            // === TOKENS ===
+            /**
+             * Random token, to be given to the user once and stored hashed.
+             */
+            public function generateToken(): string
+            {
+                return bin2hex(random_bytes(32));
+            }
+
+            public function hashToken(string $token): string
+            {
+                return hash('sha256', $token);
+            }
+
             // === AUTHENTICATION ===
             /**
              * Verify the credentials and log in the user.
              */
-            public function attempt(string $identifier, string $password): bool
+            public function attempt(string $identifier, string $password, bool $remember = false): bool
             {
                 if (is_null($this->findByIdentifier)) {
                     throw new Exception('No provider defined to find users by identifier.');
+                }
+
+                if ($this->lockedFor($identifier) > 0) {
+                    $this->dispatch('auth:lockout', null, $identifier);
+
+                    return false;
                 }
 
                 $user = call_user_func($this->findByIdentifier, $identifier);
@@ -345,24 +497,32 @@ return new class () {
                 }
 
                 if (!$this->verify($password, $hash) || is_null($user)) {
+                    $this->hit($identifier);
                     $this->dispatch('auth:failed', null, $identifier);
 
                     return false;
+                }
+
+                if (!is_null($this->throttle)) {
+                    $this->service('cache')->delete($this->throttleKey($identifier));
                 }
 
                 if (!is_null($this->rehash) && $this->needsRehash($hash)) {
                     call_user_func($this->rehash, $user, $this->hash($password));
                 }
 
-                $this->login($user);
+                $this->login($user, $remember);
 
                 return true;
             }
 
             /**
              * Log in a user without checking the credentials.
+             *
+             * @param mixed $user     User to log in
+             * @param bool  $remember Remember the user after the session ends
              */
-            public function login($user)
+            public function login($user, bool $remember = false)
             {
                 $id = $this->field($user, 'id');
 
@@ -370,13 +530,19 @@ return new class () {
                     throw new Exception(sprintf('The user has no "%s" field.', $this->fields['id']));
                 }
 
-                if ($this->startSession()) {
-                    // a new session identifier prevents session fixation
-                    session_regenerate_id(true);
-                    $_SESSION[$this->sessionKey] = $id;
+                if ($remember && is_null($this->remember)) {
+                    throw new Exception('No provider defined to remember users.');
+                }
+
+                $this->renew();
+                $this->service('session')->set($this->sessionKey, $id);
+
+                if ($remember) {
+                    $this->rememberUser($id);
                 }
 
                 $this->user = $user;
+                $this->viaToken = false;
                 $this->dispatch('auth:login', $user);
             }
 
@@ -384,12 +550,12 @@ return new class () {
             {
                 $user = $this->user();
 
-                if ($this->startSession()) {
-                    unset($_SESSION[$this->sessionKey]);
-                    session_regenerate_id(true);
-                }
+                $this->service('session')->remove($this->sessionKey);
+                $this->renew();
+                $this->forgetUser();
 
                 $this->user = null;
+                $this->viaToken = false;
 
                 if (!is_null($user)) {
                     $this->dispatch('auth:logout', $user);
@@ -398,6 +564,9 @@ return new class () {
 
             /**
              * Current user, null when not authenticated.
+             *
+             * Users are authenticated by the bearer token (when a token provider is
+             * defined and the request has one), by the session or by the remember-me cookie.
              */
             public function user()
             {
@@ -406,20 +575,62 @@ return new class () {
                 }
 
                 $this->user = null;
-                $id = $this->startSession() && isset($_SESSION[$this->sessionKey])
-                    ? $_SESSION[$this->sessionKey]
-                    : null;
+                $this->viaToken = false;
+                $token = $this->bearerToken();
+
+                if (!is_null($token) && !is_null($this->findByToken)) {
+                    // the session isn't used by requests with a bearer token
+                    $this->user = call_user_func($this->findByToken, $token);
+                    $this->viaToken = !is_null($this->user);
+
+                    return $this->user;
+                }
+
+                $session = $this->service('session');
+                $id = $session->get($this->sessionKey);
 
                 if (!is_null($id) && !is_null($this->findById)) {
                     $this->user = call_user_func($this->findById, $id);
 
                     if (is_null($this->user)) {
                         // the user doesn't exist anymore
-                        unset($_SESSION[$this->sessionKey]);
+                        $session->remove($this->sessionKey);
                     }
                 }
 
+                if (is_null($this->user) && !is_null($this->remember) && !is_null($this->findById)) {
+                    $this->user = $this->recallUser();
+                }
+
                 return $this->user;
+            }
+
+            /**
+             * Whether the current user has been authenticated by a bearer token.
+             */
+            public function viaToken(): bool
+            {
+                $this->user();
+
+                return $this->viaToken;
+            }
+
+            /**
+             * Seconds before the identifier can be used again to log in, 0 when it isn't locked.
+             */
+            public function lockedFor(string $identifier): int
+            {
+                if (is_null($this->throttle)) {
+                    return 0;
+                }
+
+                $attempts = $this->service('cache')->get($this->throttleKey($identifier));
+
+                if (!is_array($attempts) || $attempts['count'] < $this->throttle['max']) {
+                    return 0;
+                }
+
+                return max(0, $attempts['reset'] - time());
             }
 
             public function check(): bool
@@ -527,39 +738,177 @@ return new class () {
 
             // === INTERNALS ===
             /**
-             * Start the session if needed, sessions aren't used from the command line.
+             * Regenerate the session identifier (and the CSRF token) to prevent session fixation.
              */
-            private function startSession(): bool
+            private function renew()
             {
-                if (PHP_SESSION_ACTIVE === session_status()) {
-                    return true;
+                $this->service('session')->regenerate();
+
+                if (!empty($this->deps['csrf'])) {
+                    $this->service('csrf')->regenerate();
+                }
+            }
+
+            /**
+             * Bearer token of the `Authorization` header.
+             *
+             * @return string|null
+             */
+            private function bearerToken()
+            {
+                $header = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+
+                return preg_match('#^Bearer\s+(\S+)$#i', $header, $matches) ? $matches[1] : null;
+            }
+
+            /**
+             * Count a failed login attempt.
+             */
+            private function hit(string $identifier)
+            {
+                if (is_null($this->throttle)) {
+                    return;
                 }
 
-                if (empty($_SERVER['REQUEST_URI']) || PHP_SESSION_DISABLED === session_status() || headers_sent()) {
-                    return false;
+                $cache = $this->service('cache');
+                $key = $this->throttleKey($identifier);
+                $attempts = $cache->get($key);
+
+                if (!is_array($attempts) || $attempts['reset'] <= time()) {
+                    $attempts = [
+                        'count' => 0,
+                        'reset' => time() + $this->throttle['decay'],
+                    ];
                 }
 
-                if (!ini_get('session.use_cookies')) {
-                    return session_start();
+                ++$attempts['count'];
+                $cache->set($key, $attempts, max(1, $attempts['reset'] - time()));
+            }
+
+            /**
+             * Cache key of the failed login attempts, for the identifier and the IP address.
+             */
+            private function throttleKey(string $identifier): string
+            {
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+
+                return 'crystal_auth_throttle.'.sha1(strtolower($identifier).'|'.$ip);
+            }
+
+            /**
+             * Create a remember-me token and send its cookie.
+             *
+             * The cookie contains a selector, used to find the token, and a validator
+             * stored hashed, so a leaked storage can't be used to log in.
+             */
+            private function rememberUser($id)
+            {
+                $selector = bin2hex(random_bytes(12));
+                $validator = $this->generateToken();
+                $expires = time() + $this->remember['lifetime'];
+
+                call_user_func($this->remember['save'], $selector, $this->hashToken($validator), $id, $expires);
+                $this->cookie($selector.':'.$validator, $expires);
+            }
+
+            /**
+             * Remove the remember-me token of the current request and its cookie.
+             */
+            private function forgetUser()
+            {
+                if (is_null($this->remember)) {
+                    return;
                 }
 
-                $params = session_get_cookie_params();
-                $secure = $params['secure'] || (!empty($_SERVER['HTTPS']) && 'off' !== strtolower($_SERVER['HTTPS']));
+                $selector = $this->rememberSelector();
+
+                if (!is_null($selector)) {
+                    call_user_func($this->remember['forget'], $selector[0]);
+                    $this->cookie('', time() - 3600);
+                }
+            }
+
+            /**
+             * Log in the user of the remember-me cookie, the token is replaced by a new one.
+             */
+            private function recallUser()
+            {
+                $selector = $this->rememberSelector();
+
+                if (is_null($selector)) {
+                    return null;
+                }
+
+                list($selector, $validator) = $selector;
+                $token = call_user_func($this->remember['find'], $selector);
+
+                if (!is_null($token)) {
+                    // tokens are used once, invalid validators can be a theft attempt
+                    call_user_func($this->remember['forget'], $selector);
+                }
+
+                $user = is_array($token) && (int) $token['expires'] >= time() && hash_equals((string) $token['hash'], $this->hashToken($validator))
+                    ? call_user_func($this->findById, $token['user_id'])
+                    : null;
+
+                if (is_null($user)) {
+                    $this->cookie('', time() - 3600);
+
+                    return null;
+                }
+
+                $this->renew();
+                $this->service('session')->set($this->sessionKey, $token['user_id']);
+                $this->rememberUser($token['user_id']);
+                $this->dispatch('auth:login', $user);
+
+                return $user;
+            }
+
+            /**
+             * Selector and validator of the remember-me cookie.
+             *
+             * @return string[]|null
+             */
+            private function rememberSelector()
+            {
+                $cookie = $_COOKIE[$this->rememberCookie] ?? null;
+
+                if (!is_string($cookie) || !preg_match('#^([a-f0-9]+):([a-f0-9]+)$#', $cookie, $matches)) {
+                    return null;
+                }
+
+                return [$matches[1], $matches[2]];
+            }
+
+            /**
+             * Send the remember-me cookie, an empty value removes it.
+             */
+            private function cookie(string $value, int $expires)
+            {
+                if ('' === $value) {
+                    unset($_COOKIE[$this->rememberCookie]);
+                } else {
+                    $_COOKIE[$this->rememberCookie] = $value;
+                }
+
+                if (empty($_SERVER['REQUEST_URI'])) {
+                    return;
+                }
+
+                $secure = !empty($_SERVER['HTTPS']) && 'off' !== strtolower($_SERVER['HTTPS']);
 
                 if (PHP_VERSION_ID >= 70300) {
-                    session_set_cookie_params([
-                        'lifetime' => $params['lifetime'],
-                        'path' => $params['path'],
-                        'domain' => $params['domain'],
+                    setcookie($this->rememberCookie, $value, [
+                        'expires' => $expires,
+                        'path' => '/',
                         'secure' => $secure,
                         'httponly' => true,
-                        'samesite' => empty($params['samesite']) ? 'Lax' : $params['samesite'],
+                        'samesite' => 'Lax',
                     ]);
                 } else {
-                    session_set_cookie_params($params['lifetime'], $params['path'], $params['domain'], $secure, true);
+                    setcookie($this->rememberCookie, $value, $expires, '/', '', $secure, true);
                 }
-
-                return session_start();
             }
 
             /**
@@ -585,11 +934,7 @@ return new class () {
                     return;
                 }
 
-                $listener = is_callable($this->deps['listener'])
-                    ? call_user_func($this->deps['listener'])
-                    : $this->deps['listener'];
-
-                $listener->dispatch(new class ($name, $user, $identifier) {
+                $this->service('listener')->dispatch(new class ($name, $user, $identifier) {
                     public $name;
                     public $user;
                     public $identifier;
@@ -609,17 +954,17 @@ return new class () {
             }
 
             /**
-             * Retrieve the database service, it can be replaced at runtime.
+             * Retrieve a service, it can be replaced at runtime.
              *
              * @return object
              */
-            private function database()
+            private function service(string $name)
             {
-                $database = $this->deps['database'];
+                $service = $this->deps[$name];
 
-                return is_callable($database)
-                    ? call_user_func($database)
-                    : $database;
+                return is_callable($service)
+                    ? call_user_func($service)
+                    : $service;
             }
         };
 
@@ -2039,6 +2384,184 @@ return new class () {
             }
         };
 
+        /**
+         * Cross-Site Request Forgery protection, using a random token stored in the session.
+         *
+         * The token is read from the `_token` field of the request body or
+         * from the `X-CSRF-Token` header.
+         *
+         * @link https://owasp.org/www-community/attacks/csrf
+         */
+        $deps['csrf'] = new class ($deps) {
+            /**
+             * Dynamic set of dependencies, used to retrieve the session and auth services.
+             *
+             * @var array
+             */
+            private $deps;
+
+            /**
+             * Key used to store the token in the session.
+             *
+             * @var string
+             */
+            private $sessionKey = 'crystal_csrf';
+
+            /**
+             * Name of the form field containing the token.
+             *
+             * @var string
+             */
+            private $fieldName = '_token';
+
+            /**
+             * @param array $deps Dynamic set of dependencies.
+             */
+            public function __construct(array &$deps = [])
+            {
+                $this->deps = &$deps;
+            }
+
+            /**
+             * Change the name of the form field containing the token.
+             */
+            public function setFieldName(string $name)
+            {
+                $this->fieldName = $name;
+            }
+
+            /**
+             * Current token, generated when missing.
+             */
+            public function token(): string
+            {
+                $token = $this->service('session')->get($this->sessionKey);
+
+                return is_string($token) ? $token : $this->regenerate();
+            }
+
+            /**
+             * Replace the current token, it's done on login and logout too.
+             */
+            public function regenerate(): string
+            {
+                $token = bin2hex(random_bytes(32));
+                $this->service('session')->set($this->sessionKey, $token);
+
+                return $token;
+            }
+
+            /**
+             * Hidden form field containing the token.
+             */
+            public function field(): string
+            {
+                return sprintf(
+                    '<input type="hidden" name="%s" value="%s">',
+                    htmlspecialchars($this->fieldName, ENT_QUOTES),
+                    $this->token()
+                );
+            }
+
+            /**
+             * Compare the token with the one stored in the session.
+             *
+             * @param string|null $token By default it's read from the request
+             */
+            public function check($token = null): bool
+            {
+                if (is_null($token)) {
+                    $token = $_POST[$this->fieldName] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? null;
+                }
+
+                $expected = $this->service('session')->get($this->sessionKey);
+
+                return is_string($token) && is_string($expected) && hash_equals($expected, $token);
+            }
+
+            /**
+             * Wrap a route callback, it's invoked only when the token is valid.
+             *
+             * Safe methods (GET, HEAD, OPTIONS) and requests authenticated by a
+             * bearer token aren't checked.
+             * Without `$onFail` the response status code is set to 403.
+             *
+             * @param callable      $callback Route callback
+             * @param callable|null $onFail   Callback invoked when the token isn't valid
+             *
+             * @return callable
+             */
+            public function protect(callable $callback, $onFail = null)
+            {
+                assert(is_null($onFail) || is_callable($onFail));
+
+                return new class ($this, $callback, $onFail) {
+                    private $csrf;
+                    private $callback;
+                    private $onFail;
+
+                    public function __construct($csrf, callable $callback, $onFail)
+                    {
+                        $this->csrf = $csrf;
+                        $this->callback = $callback;
+                        $this->onFail = $onFail;
+                    }
+
+                    public function __invoke(...$args)
+                    {
+                        if ($this->csrf->skip() || $this->csrf->check()) {
+                            return call_user_func_array($this->callback, $args);
+                        }
+
+                        if (!is_null($this->onFail)) {
+                            return call_user_func_array($this->onFail, $args);
+                        }
+
+                        http_response_code(403);
+                    }
+
+                    /**
+                     * Wrapped callback, used by the router to read the parameters names.
+                     */
+                    public function getCrystalCallable()
+                    {
+                        return is_object($this->callback) && method_exists($this->callback, 'getCrystalCallable')
+                            ? $this->callback->getCrystalCallable()
+                            : $this->callback;
+                    }
+                };
+            }
+
+            /**
+             * Check if the current request doesn't need a token.
+             */
+            public function skip(): bool
+            {
+                $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+
+                if (in_array($method, ['GET', 'HEAD', 'OPTIONS'], true)) {
+                    return true;
+                }
+
+                // bearer tokens aren't sent automatically by browsers
+                return !empty($this->deps['auth']) && $this->service('auth')->viaToken();
+            }
+
+            /**
+             * Retrieve a service, it can be replaced at runtime.
+             *
+             * @return object
+             */
+            private function service(string $name)
+            {
+                $service = $this->deps[$name];
+
+                return is_callable($service)
+                    ? call_user_func($service)
+                    : $service;
+            }
+        };
+
         $deps['database'] = new class () {
             /**
              * Shared PDO instance.
@@ -3392,6 +3915,106 @@ return new class () {
                 return is_callable($database)
                     ? call_user_func($database)
                     : $database;
+            }
+        };
+
+        /**
+         * Native sessions, started only when needed with hardened cookies.
+         *
+         * From the command line sessions aren't used: values are kept in memory
+         * for the current execution.
+         *
+         * @link https://www.php.net/manual/en/book.session.php
+         */
+        $deps['session'] = new class () {
+            /**
+             * Values used when sessions aren't available.
+             *
+             * @var array
+             */
+            private $memory = [];
+
+            /**
+             * Start the session if needed.
+             *
+             * Cookies are `httponly`, `samesite=Lax` (unless configured differently)
+             * and `secure` on HTTPS.
+             */
+            public function start(): bool
+            {
+                if (PHP_SESSION_ACTIVE === session_status()) {
+                    return true;
+                }
+
+                if (empty($_SERVER['REQUEST_URI']) || PHP_SESSION_DISABLED === session_status() || headers_sent()) {
+                    return false;
+                }
+
+                if (!ini_get('session.use_cookies')) {
+                    return session_start();
+                }
+
+                $params = session_get_cookie_params();
+                $secure = $params['secure'] || (!empty($_SERVER['HTTPS']) && 'off' !== strtolower($_SERVER['HTTPS']));
+
+                if (PHP_VERSION_ID >= 70300) {
+                    session_set_cookie_params([
+                        'lifetime' => $params['lifetime'],
+                        'path' => $params['path'],
+                        'domain' => $params['domain'],
+                        'secure' => $secure,
+                        'httponly' => true,
+                        'samesite' => empty($params['samesite']) ? 'Lax' : $params['samesite'],
+                    ]);
+                } else {
+                    session_set_cookie_params($params['lifetime'], $params['path'], $params['domain'], $secure, true);
+                }
+
+                return session_start();
+            }
+
+            /**
+             * Change the session identifier keeping its values, it prevents session fixation.
+             */
+            public function regenerate(): bool
+            {
+                return $this->start() && session_regenerate_id(true);
+            }
+
+            public function get(string $key, $default = null)
+            {
+                if (!$this->start()) {
+                    return $this->memory[$key] ?? $default;
+                }
+
+                return $_SESSION[$key] ?? $default;
+            }
+
+            public function set(string $key, $value)
+            {
+                if (!$this->start()) {
+                    $this->memory[$key] = $value;
+
+                    return;
+                }
+
+                $_SESSION[$key] = $value;
+            }
+
+            public function has(string $key): bool
+            {
+                return !is_null($this->get($key));
+            }
+
+            public function remove(string $key)
+            {
+                if (!$this->start()) {
+                    unset($this->memory[$key]);
+
+                    return;
+                }
+
+                unset($_SESSION[$key]);
             }
         };
 

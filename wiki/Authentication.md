@@ -59,10 +59,78 @@ $auth->user();  // the current user or null
 $auth->id();    // the current user identifier or null
 ```
 
-The session is started only when needed, with `httponly` cookies, `samesite=Lax` (unless configured differently) and `secure` cookies on HTTPS.
-The session identifier is regenerated on login and logout to prevent session fixation, so log in users **before** sending any output.
+The user identifier is stored using the [[Session]] service.
+The session identifier (and the [[CSRF]] token) is regenerated on login and logout to prevent session fixation, so log in users **before** sending any output.
 
 From the command line sessions aren't used: the user is kept in memory for the current execution.
+
+## Throttling
+
+Failed login attempts can be limited for each identifier and IP address, using the [[Cache]] service:
+
+```php
+$mf('cache')::setDriver('filename', '/path/to/cache');
+
+$auth->throttle(5, 60); // 5 failed attempts, then locked for 60 seconds
+
+if (!$auth->attempt($_POST['email'], $_POST['password'])) {
+    $seconds = $auth->lockedFor($_POST['email']);
+
+    echo $seconds > 0
+        ? "Too many attempts, retry in $seconds seconds"
+        : 'Invalid credentials';
+}
+```
+
+While locked even valid credentials are refused, a successful login resets the attempts.
+
+## Remember me
+
+Users can be remembered after the session ends, using a cookie:
+
+```php
+$auth->rememberWithDatabase(); // table "crystal_remember_tokens", created on first use
+
+$auth->attempt($_POST['email'], $_POST['password'], true);
+// or
+$auth->login($user, true);
+```
+
+The cookie contains a selector, used to find the token, and a validator, stored hashed: a leaked table can't be used to log in.
+Tokens are used once: when the user is logged in by the cookie, the token is replaced by a new one. Expired and invalid tokens are refused, logout removes the token of the current device.
+
+Using a different storage:
+
+```php
+$auth->setRememberProvider(
+    function ($selector, $hash, $userId, $expires) { /* store the token */ },
+    function ($selector) { /* return ['hash' => ..., 'user_id' => ..., 'expires' => ...] or null */ },
+    function ($selector) { /* remove the token */ },
+    2592000 // lifetime in seconds, 30 days by default
+);
+```
+
+## API tokens
+
+Requests with an `Authorization: Bearer <token>` header can be authenticated without sessions:
+
+```php
+$token = $auth->generateToken(); // give it to the user once
+$hash = $auth->hashToken($token); // and store only the hash
+
+// with the database: the third argument is the column containing the hashed tokens
+$auth->useDatabase('users', 'email', 'api_token');
+
+// or with a callback
+$auth->setTokenProvider(function ($token) use ($auth) {
+    return find_user_by_api_token($auth->hashToken($token));
+});
+
+$auth->user();     // the user of the token
+$auth->viaToken(); // true
+```
+
+When a request has a bearer token, the session and the remember-me cookie aren't used, even if the token is invalid.
 
 ## Protecting routes
 
@@ -119,9 +187,10 @@ When the [[Event Listener]] is available, these events are dispatched:
 
 | Event          | Properties                                   |
 | -------------- | -------------------------------------------- |
-| `auth:login`   | `$event->user`                               |
+| `auth:login`   | `$event->user` (remember-me logins too)      |
 | `auth:logout`  | `$event->user`                               |
 | `auth:failed`  | `$event->identifier` (used in `attempt`)     |
+| `auth:lockout` | `$event->identifier` (used in `attempt`)     |
 
 ```php
 $mf('listener')->on('auth:failed', function ($event) use ($mf) {
