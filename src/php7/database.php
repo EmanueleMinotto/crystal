@@ -123,13 +123,13 @@ $deps['database'] = new class () {
             implode(', :', $keys)
         );
 
-        $this->query($sql, $values);
-
-        try {
+        if ('pgsql' === static::$pdo->getAttribute(PDO::ATTR_DRIVER_NAME)) {
+            // lastInsertId() fails without a sequence, aborting the current transaction
+            $rows = $this->query($sql.' RETURNING *', $values);
+            $lastInsertId = $rows[0]['id'] ?? false;
+        } else {
+            $this->query($sql, $values);
             $lastInsertId = static::$pdo->lastInsertId();
-        } catch (PDOException $exception) {
-            // PostgreSQL fails when the table has no sequence
-            $lastInsertId = false;
         }
 
         // without auto increment (MySQL returns "0") the inserted id is used
