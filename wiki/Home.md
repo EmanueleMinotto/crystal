@@ -31,5 +31,6 @@ $mf('/', function () {
 -   a [[Mailer]] to send emails using `mail()` or SMTP
 -   a [[Configuration]] system with `.env` files support
 -   an [[Event Listener]] to listen and dispatch events
--   [[Authentication]] with sessions, password hashing, protected routes and gates
+-   [[Authentication]] with password hashing, protected routes, gates, throttling, remember-me and API tokens
+-   [[Session]] with hardened cookies and [[CSRF]] protection
 -   **no external dependencies, just a single PHP file!**
