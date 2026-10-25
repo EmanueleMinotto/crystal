@@ -31,6 +31,7 @@ $mf('/', function () {
 -   a [Configuration](https://github.com/EmanueleMinotto/crystal/wiki/Configuration) system with `.env` files support
 -   [Authentication](https://github.com/EmanueleMinotto/crystal/wiki/Authentication) with password hashing, protected routes, gates, throttling, remember-me and API tokens
 -   [Request and Response](https://github.com/EmanueleMinotto/crystal/wiki/Request-Response) objects and [Middlewares](https://github.com/EmanueleMinotto/crystal/wiki/Middleware)
+-   [Validation](https://github.com/EmanueleMinotto/crystal/wiki/Validation) of the input data
 -   [Error handling](https://github.com/EmanueleMinotto/crystal/wiki/Errors) with error pages, 404 and 405 responses
 -   [Sessions](https://github.com/EmanueleMinotto/crystal/wiki/Session) with hardened cookies and [CSRF](https://github.com/EmanueleMinotto/crystal/wiki/CSRF) protection
 -   **no external dependencies, just a single PHP file!**

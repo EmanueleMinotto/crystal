@@ -33,6 +33,7 @@ $mf('/', function () {
 -   an [[Event Listener]] to listen and dispatch events
 -   [[Authentication]] with password hashing, protected routes, gates, throttling, remember-me and API tokens
 -   [[Request Response]] objects and [[Middleware]]
+-   [[Validation]] of the input data
 -   [[Errors]] handling with error pages, 404 and 405 responses
 -   [[Session]] with hardened cookies and [[CSRF]] protection
 -   **no external dependencies, just a single PHP file!**
