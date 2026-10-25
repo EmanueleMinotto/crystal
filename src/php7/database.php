@@ -9,11 +9,19 @@ $deps['database'] = new class () {
     private static $pdo;
 
     /**
+     * Name of the PDO driver, like "mysql" or "sqlite".
+     *
+     * @var string
+     */
+    private static $driver;
+
+    /**
      * Set a shared PDO connection.
      */
     public static function setPdo(PDO $pdo)
     {
         static::$pdo = $pdo;
+        static::$driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
         static::$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         static::$pdo->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
     }
@@ -25,7 +33,7 @@ $deps['database'] = new class () {
      */
     public function quoteIdentifier(string $name): string
     {
-        switch (static::$pdo->getAttribute(PDO::ATTR_DRIVER_NAME)) {
+        switch (static::$driver) {
             case 'mysql':
                 // SQLite reads unknown double quoted identifiers as strings
             case 'sqlite':
@@ -123,7 +131,7 @@ $deps['database'] = new class () {
             implode(', :', $keys)
         );
 
-        if ('pgsql' === static::$pdo->getAttribute(PDO::ATTR_DRIVER_NAME)) {
+        if ('pgsql' === static::$driver) {
             // lastInsertId() fails without a sequence, aborting the current transaction
             $rows = $this->query($sql.' RETURNING *', $values);
             $lastInsertId = $rows[0]['id'] ?? false;
@@ -147,7 +155,7 @@ $deps['database'] = new class () {
      */
     public function read(string $table, $where, $key = 'id')
     {
-        $where = $this->buildWhereCondition($where, $key);
+        $where = $this->where($where, $key);
         $stmt = static::$pdo->prepare(sprintf(
             'SELECT * FROM %s WHERE %s LIMIT 1',
             $this->quoteIdentifier($table),
@@ -163,22 +171,32 @@ $deps['database'] = new class () {
      */
     public function update(string $table, array $values, $where, $key = 'id')
     {
-        $params = $values;
-        $keys = array_keys($values);
+        $where = $this->where($where, $key);
+        // placeholders can't be mixed: positional for conditions with "?", named and prefixed
+        // otherwise, so they don't collide with the ones of the conditions
+        $positional = !empty($where['params']) && array_is_list($where['params']);
+        $set = [];
+        $params = [];
 
-        $set = join(', ', array_map(function ($key) {
-            return sprintf('%s = :%s', $this->quoteIdentifier($key), $key);
-        }, $keys));
+        foreach ($values as $column => $value) {
+            $placeholder = $positional ? '?' : ':set_'.$column;
+            $set[] = sprintf('%s = %s', $this->quoteIdentifier($column), $placeholder);
 
-        $where = $this->buildWhereCondition($where, $key);
+            if ($positional) {
+                $params[] = $value;
+            } else {
+                $params[$placeholder] = $value;
+            }
+        }
+
         $stmt = static::$pdo->prepare(sprintf(
             'UPDATE %s SET %s WHERE %s',
             $this->quoteIdentifier($table),
-            $set,
+            implode(', ', $set),
             $where['sql']
         ));
 
-        return $stmt->execute(array_merge($where['params'], $params));
+        return $stmt->execute($positional ? array_merge($params, $where['params']) : $params + $where['params']);
     }
 
     /**
@@ -186,7 +204,7 @@ $deps['database'] = new class () {
      */
     public function delete(string $table, $where, $key = 'id')
     {
-        $where = $this->buildWhereCondition($where, $key);
+        $where = $this->where($where, $key);
         $stmt = static::$pdo->prepare(sprintf(
             'DELETE FROM %s WHERE %s',
             $this->quoteIdentifier($table),
@@ -250,6 +268,17 @@ $deps['database'] = new class () {
 
             throw $exception;
         }
+    }
+
+    /**
+     * Conditions of read, update and delete: associative arrays are
+     * conditions like the ones of select, other values are matched by the key.
+     */
+    private function where($where, $key): array
+    {
+        return is_array($where) && !empty($where) && !array_is_list($where)
+            ? $this->buildWhereCondition($where)
+            : $this->buildWhereCondition($where, $key);
     }
 
     private function buildWhereCondition(): array

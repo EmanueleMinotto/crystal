@@ -19,10 +19,11 @@ class FakeDriverPdo extends PDO
 $mf(function () use ($mf) {
     $db = $mf('database');
     $pdo = new FakeDriverPdo('sqlite::memory:');
-    $db::setPdo($pdo);
 
+    // the driver name is read once, by setPdo()
     foreach (['mysql', 'pgsql', 'sqlite', 'sqlsrv'] as $driver) {
         $pdo->driver = $driver;
+        $db::setPdo($pdo);
         echo $driver.': '.$db->quoteIdentifier('users').' '.$db->quoteIdentifier('app.users').' '.$db->quoteIdentifier('we`ird"na]me')."\n";
     }
 });

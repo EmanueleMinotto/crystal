@@ -227,21 +227,9 @@ $deps['cache'] = new class () {
 
                     public function get($key, $default = null)
                     {
-                        $file = $this->path($key);
+                        $data = $this->read($key);
 
-                        if (!file_exists($file)) {
-                            return $default;
-                        }
-
-                        $data = unserialize(file_get_contents($file));
-
-                        if ($data['expires'] !== null && time() > $data['expires']) {
-                            unlink($file);
-
-                            return $default;
-                        }
-
-                        return $data['value'];
+                        return is_null($data) ? $default : $data['value'];
                     }
 
                     public function set($key, $value, $ttl = null)
@@ -251,7 +239,24 @@ $deps['cache'] = new class () {
                             'expires' => ($ttl !== null && $ttl > 0) ? time() + $ttl : null,
                         ]);
 
-                        return file_put_contents($this->path($key), $data) !== false;
+                        // written to a temporary file and renamed, so concurrent
+                        // requests never read a partially written file
+                        $temporary = tempnam($this->dir, 'tmp');
+
+                        if (false === $temporary) {
+                            return false;
+                        }
+
+                        // tempnam() creates the file readable only by its owner
+                        @chmod($temporary, 0666 & ~umask());
+
+                        if (false === file_put_contents($temporary, $data) || !rename($temporary, $this->path($key))) {
+                            @unlink($temporary);
+
+                            return false;
+                        }
+
+                        return true;
                     }
 
                     public function delete($key)
@@ -272,21 +277,7 @@ $deps['cache'] = new class () {
 
                     public function has($key)
                     {
-                        $file = $this->path($key);
-
-                        if (!file_exists($file)) {
-                            return false;
-                        }
-
-                        $data = unserialize(file_get_contents($file));
-
-                        if ($data['expires'] !== null && time() > $data['expires']) {
-                            unlink($file);
-
-                            return false;
-                        }
-
-                        return true;
+                        return !is_null($this->read($key));
                     }
 
                     public function clearPrefix($prefix)
@@ -296,6 +287,32 @@ $deps['cache'] = new class () {
                         }
 
                         return true;
+                    }
+
+                    /**
+                     * Stored value and expiration, null when missing, expired or unreadable.
+                     *
+                     * @return array|null
+                     */
+                    private function read($key)
+                    {
+                        $file = $this->path($key);
+
+                        // the file can be removed by a concurrent request
+                        $raw = file_exists($file) ? @file_get_contents($file) : false;
+                        $data = false === $raw ? false : @unserialize($raw);
+
+                        if (!is_array($data) || !array_key_exists('expires', $data)) {
+                            return null;
+                        }
+
+                        if ($data['expires'] !== null && time() > $data['expires']) {
+                            @unlink($file);
+
+                            return null;
+                        }
+
+                        return $data;
                     }
 
                     private function path($key)
@@ -899,7 +916,8 @@ $deps['cache'] = new class () {
         $success = true;
 
         foreach ($values as $key => $value) {
-            $success = $success && $this->set($key, $value, $ttl);
+            // every value is stored, even after a failure
+            $success = $this->set($key, $value, $ttl) && $success;
         }
 
         return $success;
@@ -920,7 +938,8 @@ $deps['cache'] = new class () {
         $success = true;
 
         foreach ($keys as $key) {
-            $success = $success && $this->delete($key);
+            // every key is deleted, even after a failure
+            $success = $this->delete($key) && $success;
         }
 
         return $success;
