@@ -18,6 +18,7 @@ $mf(function () use ($mf, $run) {
 
 ?>
 --EXPECT--
+create: [1,2,3]
 select by column: [{"id":"2","group":"g2"}]
 select in: [{"id":"1"},{"id":"3"}]
 read: g3
