@@ -154,6 +154,21 @@ $mf('/account', $auth->protect(function () {
 
 Named subpatterns still work with protected routes.
 
+### Middleware
+
+With [[Middleware]], `$auth->middleware()` returns a 401 response for guests, `$auth->middleware('post:edit')` a 403 response when the gate denies.
+In this case the gate receives the current user and the request:
+
+```php
+$auth->define('post:edit', function ($user, $request) {
+    return is_post_author($user, $request->param('id'));
+});
+
+$mf('/posts/(?P<id>[0-9]+)/edit', $mf('middleware')->wrap(function ($id) {
+    echo 'Editing post ' . $id;
+}, $auth->middleware('post:edit')));
+```
+
 ## Gates
 
 Gates are callbacks receiving the current user and the arguments passed to `can`.

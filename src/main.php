@@ -36,6 +36,13 @@ return new class () {
      */
     private $base;
 
+    /**
+     * Whether a route callback has returned a response.
+     *
+     * @var bool
+     */
+    private $responded = false;
+
     public function __construct()
     {
         // services write on $deps, so it has to be bound to the property
@@ -51,6 +58,7 @@ return new class () {
         $matches = &$this->matches;
         $deps = &$this->deps;
         $base = &$this->base;
+        $responded = &$this->responded;
 
         // base path for each route defined once
         if (is_null($base)) {
@@ -156,6 +164,65 @@ return new class () {
         }
 
         /**
+         * Function invoking route callbacks.
+         *
+         * The route parameters are exposed by the request service, the first
+         * response returned by a callback is sent and the next callbacks are skipped.
+         *
+         * @param callback $cb     Route callback
+         * @param array    $args   Arguments of the callback
+         * @param array    $params Named route parameters
+         *
+         * @return void
+         */
+        $dispatch = function ($cb, array $args, array $params) use (&$deps, &$responded) {
+            // the output of all the callbacks is buffered until the end of
+            // the script, so a response can set status and headers after it
+            static $buffered = false;
+
+            if (!$buffered) {
+                $buffered = ob_start();
+            }
+
+            if ($responded) {
+                return;
+            }
+
+            if (!empty($deps['request']) && is_object($deps['request']) && method_exists($deps['request'], 'setParams')) {
+                $deps['request']->setParams($params);
+            }
+
+            ob_start();
+
+            try {
+                $result = call_user_func_array($cb, $args);
+            } catch (Throwable $exception) {
+                ob_end_flush();
+
+                throw $exception;
+            }
+
+            $output = ob_get_clean();
+
+            if (!is_object($result) || !method_exists($result, 'send')) {
+                echo $output;
+
+                return;
+            }
+
+            $responded = true;
+
+            // the output of the callback is the beginning of the response body
+            if ('' !== $output && method_exists($result, 'body') && method_exists($result, 'setBody')) {
+                $result->setBody($output.$result->body());
+                $output = '';
+            }
+
+            $result->send();
+            echo $output;
+        };
+
+        /**
          * Function used as a router.
          *
          * @param string   $regex    Regular expression used to match requested URL
@@ -167,7 +234,7 @@ return new class () {
          *
          * @return void
          */
-        $deploy = function ($regex, $cb, $method = 'GET', $priority = 0) use (&$deploy, &$matches, $base) {
+        $deploy = function ($regex, $cb, $method = 'GET', $priority = 0) use (&$deploy, &$matches, $base, $dispatch) {
             // Checking well formed call
             assert(is_string($regex));
             assert(is_callable($cb));
@@ -190,6 +257,14 @@ return new class () {
             ) {
                 // Named subpatterns are allowed
                 // http://it2.php.net/manual/en/regexp.reference.subpatterns.php
+                $named = [];
+
+                foreach ($submatches as $key => $value) {
+                    if (is_string($key)) {
+                        $named[$key] = $value;
+                    }
+                }
+
                 $submatches = array_unique($submatches);
                 // If matches is provided, then it is filled with the results of search.
                 // $submatches[0] will contain the text that matched the full pattern,
@@ -224,11 +299,10 @@ return new class () {
                 if (array_intersect(array_keys($params), array_keys($submatches))) {
                     $submatches = array_merge($params, $submatches);
                 }
-                array_unshift($submatches, $cb);
 
                 // register_shutdown_function is used to call added functions when script ends
                 // http://it2.php.net/manual/en/function.register-shutdown-function.php
-                return call_user_func_array('register_shutdown_function', array_values($submatches));
+                return register_shutdown_function($dispatch, $cb, array_values($submatches), $named);
             }
         };
 

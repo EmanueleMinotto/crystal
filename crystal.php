@@ -140,6 +140,13 @@ return new class () {
      */
     private $base;
 
+    /**
+     * Whether a route callback has returned a response.
+     *
+     * @var bool
+     */
+    private $responded = false;
+
     public function __construct()
     {
         // services write on $deps, so it has to be bound to the property
@@ -733,6 +740,33 @@ return new class () {
                             ? $this->callback->getCrystalCallable()
                             : $this->callback;
                     }
+                };
+            }
+
+            /**
+             * Middleware allowing only authenticated (and authorized) users.
+             *
+             * Guests receive a 401 response, unauthorized users a 403 one.
+             * The gate receives the current user and the request.
+             *
+             * @param string|null $ability Gate checked after the authentication
+             *
+             * @return callable
+             */
+            public function middleware($ability = null)
+            {
+                assert(is_null($ability) || is_string($ability));
+
+                return function ($request, callable $next) use ($ability) {
+                    if (!$this->check()) {
+                        return $this->service('response')->setStatus(401);
+                    }
+
+                    if (!is_null($ability) && !$this->can($ability, $request)) {
+                        return $this->service('response')->setStatus(403);
+                    }
+
+                    return $next();
                 };
             }
 
@@ -2580,6 +2614,25 @@ return new class () {
             }
 
             /**
+             * Middleware allowing only requests with a valid token, the others receive a 403 response.
+             *
+             * Safe methods (GET, HEAD, OPTIONS) and requests authenticated by a
+             * bearer token aren't checked.
+             *
+             * @return callable
+             */
+            public function middleware()
+            {
+                return function ($request, callable $next) {
+                    if ($this->skip() || $this->check()) {
+                        return $next();
+                    }
+
+                    return $this->service('response')->setStatus(403);
+                };
+            }
+
+            /**
              * Check if the current request doesn't need a token.
              */
             public function skip(): bool
@@ -3766,6 +3819,141 @@ return new class () {
         };
 
         /**
+         * Middlewares wrapping route callbacks.
+         *
+         * A middleware receives the request and the next handler, it returns a response:
+         *
+         *     function ($request, callable $next) {
+         *         $response = $next();
+         *         $response->setHeader('X-Frame-Options', 'DENY');
+         *
+         *         return $response;
+         *     }
+         *
+         * `$next()` always returns a response: when the callback doesn't return one,
+         * its output is used as the body. In that case, unless a middleware returns
+         * another response, the next route callbacks are still invoked.
+         */
+        $deps['middleware'] = new class ($deps) {
+            /**
+             * Dynamic set of dependencies, used to retrieve the request and response services.
+             *
+             * @var array
+             */
+            private $deps;
+
+            /**
+             * @param array $deps Dynamic set of dependencies.
+             */
+            public function __construct(array &$deps = [])
+            {
+                $this->deps = &$deps;
+            }
+
+            /**
+             * Wrap a route callback with middlewares, the first one is the outermost.
+             *
+             * @param callable $callback       Route callback
+             * @param callable ...$middlewares Middlewares
+             *
+             * @return callable
+             */
+            public function wrap(callable $callback, callable ...$middlewares)
+            {
+                return new class ($this->deps, $callback, $middlewares) {
+                    private $deps;
+                    private $callback;
+                    private $middlewares;
+
+                    public function __construct(array &$deps, callable $callback, array $middlewares)
+                    {
+                        $this->deps = &$deps;
+                        $this->callback = $callback;
+                        $this->middlewares = $middlewares;
+                    }
+
+                    public function __invoke(...$args)
+                    {
+                        $request = $this->service('request');
+
+                        // response created from the output of a callback not returning one
+                        $implicit = null;
+
+                        $handler = function () use ($args, &$implicit) {
+                            ob_start();
+
+                            try {
+                                $result = call_user_func_array($this->callback, $args);
+                            } catch (Throwable $exception) {
+                                ob_end_flush();
+
+                                throw $exception;
+                            }
+
+                            $output = ob_get_clean();
+
+                            if (is_object($result) && method_exists($result, 'send')) {
+                                if ('' !== $output && method_exists($result, 'body') && method_exists($result, 'setBody')) {
+                                    $result->setBody($output.$result->body());
+                                }
+
+                                return $result;
+                            }
+
+                            $status = http_response_code();
+                            $implicit = $this->service('response')
+                                ->setStatus(is_int($status) ? $status : 200)
+                                ->setBody($output);
+
+                            return $implicit;
+                        };
+
+                        foreach (array_reverse($this->middlewares) as $middleware) {
+                            $handler = function () use ($middleware, $request, $handler) {
+                                return call_user_func($middleware, $request, $handler);
+                            };
+                        }
+
+                        $response = $handler();
+
+                        if (!is_null($implicit) && (!is_object($response) || $response === $implicit)) {
+                            // the callback didn't return a response: the next callbacks aren't skipped
+                            $implicit->send();
+
+                            return null;
+                        }
+
+                        return $response;
+                    }
+
+                    /**
+                     * Wrapped callback, used by the router to read the parameters names.
+                     */
+                    public function getCrystalCallable()
+                    {
+                        return is_object($this->callback) && method_exists($this->callback, 'getCrystalCallable')
+                            ? $this->callback->getCrystalCallable()
+                            : $this->callback;
+                    }
+
+                    /**
+                     * Retrieve a service, it can be replaced at runtime.
+                     *
+                     * @return object
+                     */
+                    private function service(string $name)
+                    {
+                        $service = $this->deps[$name];
+
+                        return is_callable($service)
+                            ? call_user_func($service)
+                            : $service;
+                    }
+                };
+            }
+        };
+
+        /**
          * Database migrations built on top of the database service.
          *
          * Migrations are identified by a version string and sorted using the
@@ -4016,6 +4204,392 @@ return new class () {
                     ? call_user_func($database)
                     : $database;
             }
+        };
+
+        /**
+         * The current HTTP request.
+         *
+         * Values are read from the superglobals when requested, so changes made
+         * to them (by the application or by other services) are always visible.
+         */
+        $deps['request'] = new class () {
+            /**
+             * Raw body, null when not read yet.
+             *
+             * @var string|null
+             */
+            private $body;
+
+            /**
+             * Named parameters of the current route.
+             *
+             * @var array
+             */
+            private $params = [];
+
+            /**
+             * Custom values, i.e. shared by middlewares.
+             *
+             * @var array
+             */
+            private $attributes = [];
+
+            /**
+             * Request method, uppercase.
+             */
+            public function method(): string
+            {
+                return strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+            }
+
+            /**
+             * Requested path, without the query string.
+             */
+            public function path(): string
+            {
+                $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+
+                return is_string($path) ? $path : '/';
+            }
+
+            public function isSecure(): bool
+            {
+                return !empty($_SERVER['HTTPS']) && 'off' !== strtolower($_SERVER['HTTPS']);
+            }
+
+            /**
+             * Client IP address, proxies headers aren't trusted.
+             *
+             * @return string|null
+             */
+            public function ip()
+            {
+                return $_SERVER['REMOTE_ADDR'] ?? null;
+            }
+
+            /**
+             * Query string values, all of them without a key.
+             */
+            public function query($key = null, $default = null)
+            {
+                return is_null($key) ? $_GET : ($_GET[$key] ?? $default);
+            }
+
+            /**
+             * Body values, from a form or from a JSON object, all of them without a key.
+             */
+            public function input($key = null, $default = null)
+            {
+                $input = $_POST;
+
+                if ($this->isJson()) {
+                    $input = $this->json();
+                    $input = is_array($input) ? $input : [];
+                }
+
+                return is_null($key) ? $input : ($input[$key] ?? $default);
+            }
+
+            /**
+             * Whether the body is JSON, according to the Content-Type header.
+             */
+            public function isJson(): bool
+            {
+                return false !== stripos((string) $this->header('Content-Type', ''), 'json');
+            }
+
+            /**
+             * Decoded JSON body, objects are decoded as arrays.
+             */
+            public function json()
+            {
+                return json_decode($this->body(), true);
+            }
+
+            /**
+             * Raw body.
+             */
+            public function body(): string
+            {
+                if (is_null($this->body)) {
+                    $this->body = (string) file_get_contents('php://input');
+                }
+
+                return $this->body;
+            }
+
+            /**
+             * Replace the raw body, i.e. in tests.
+             */
+            public function setBody(string $body)
+            {
+                $this->body = $body;
+            }
+
+            /**
+             * Request header, names are case insensitive.
+             */
+            public function header(string $name, $default = null)
+            {
+                $key = strtoupper(str_replace('-', '_', $name));
+
+                // these headers don't have the HTTP_ prefix
+                if (in_array($key, ['CONTENT_TYPE', 'CONTENT_LENGTH'], true) && isset($_SERVER[$key])) {
+                    return $_SERVER[$key];
+                }
+
+                return $_SERVER['HTTP_'.$key] ?? $default;
+            }
+
+            public function cookie(string $name, $default = null)
+            {
+                return $_COOKIE[$name] ?? $default;
+            }
+
+            /**
+             * Uploaded file, as described in $_FILES.
+             *
+             * @return array|null
+             */
+            public function file(string $name)
+            {
+                return $_FILES[$name] ?? null;
+            }
+
+            /**
+             * Named parameter of the current route.
+             */
+            public function param(string $name, $default = null)
+            {
+                return $this->params[$name] ?? $default;
+            }
+
+            /**
+             * Named parameters of the current route.
+             */
+            public function params(): array
+            {
+                return $this->params;
+            }
+
+            /**
+             * Set by the router before invoking each route callback.
+             */
+            public function setParams(array $params)
+            {
+                $this->params = $params;
+            }
+
+            public function attribute(string $name, $default = null)
+            {
+                return array_key_exists($name, $this->attributes) ? $this->attributes[$name] : $default;
+            }
+
+            public function setAttribute(string $name, $value)
+            {
+                $this->attributes[$name] = $value;
+            }
+        };
+
+        /**
+         * HTTP responses, `$mf('response')` returns a new response each time.
+         *
+         * Status, headers and cookies are sent only by `send`, so they can be
+         * changed at any time. Route callbacks can return a response, it's sent
+         * by the router.
+         */
+        $deps['response'] = function () {
+            return new class () {
+                /**
+                 * @var int
+                 */
+                private $status = 200;
+
+                /**
+                 * Headers, lowercase name => [name, value].
+                 *
+                 * @var array
+                 */
+                private $headers = [];
+
+                /**
+                 * Cookies, name => [value, options].
+                 *
+                 * @var array
+                 */
+                private $cookies = [];
+
+                /**
+                 * @var string
+                 */
+                private $body = '';
+
+                public function status(): int
+                {
+                    return $this->status;
+                }
+
+                public function setStatus(int $status)
+                {
+                    $this->status = $status;
+
+                    return $this;
+                }
+
+                /**
+                 * Response header, names are case insensitive.
+                 *
+                 * @return string|null
+                 */
+                public function header(string $name)
+                {
+                    $key = strtolower($name);
+
+                    return isset($this->headers[$key]) ? $this->headers[$key][1] : null;
+                }
+
+                /**
+                 * All the headers, name => value.
+                 */
+                public function headers(): array
+                {
+                    return array_column($this->headers, 1, 0);
+                }
+
+                public function setHeader(string $name, string $value)
+                {
+                    $this->headers[strtolower($name)] = [$name, $value];
+
+                    return $this;
+                }
+
+                public function removeHeader(string $name)
+                {
+                    unset($this->headers[strtolower($name)]);
+
+                    return $this;
+                }
+
+                /**
+                 * Add a cookie, options are the ones of setcookie().
+                 *
+                 * By default cookies are `httponly`, `samesite=Lax`, `secure` on HTTPS
+                 * and valid for the whole domain.
+                 *
+                 * @link https://www.php.net/manual/en/function.setcookie.php
+                 */
+                public function cookie(string $name, string $value, array $options = [])
+                {
+                    $this->cookies[$name] = [$value, $options + [
+                        'expires' => 0,
+                        'path' => '/',
+                        'domain' => '',
+                        'secure' => !empty($_SERVER['HTTPS']) && 'off' !== strtolower($_SERVER['HTTPS']),
+                        'httponly' => true,
+                        'samesite' => 'Lax',
+                    ]];
+
+                    return $this;
+                }
+
+                /**
+                 * Remove a cookie from the client.
+                 */
+                public function forgetCookie(string $name, array $options = [])
+                {
+                    return $this->cookie($name, '', ['expires' => time() - 3600] + $options);
+                }
+
+                /**
+                 * Cookies, name => [value, options].
+                 */
+                public function cookies(): array
+                {
+                    return $this->cookies;
+                }
+
+                public function body(): string
+                {
+                    return $this->body;
+                }
+
+                public function setBody(string $body)
+                {
+                    $this->body = $body;
+
+                    return $this;
+                }
+
+                /**
+                 * Append content to the body.
+                 */
+                public function write(string $content)
+                {
+                    $this->body .= $content;
+
+                    return $this;
+                }
+
+                /**
+                 * JSON body, with the Content-Type header.
+                 *
+                 * @param mixed    $data   Data to encode
+                 * @param int|null $status Status code, unchanged when null
+                 */
+                public function json($data, $status = null)
+                {
+                    assert(is_null($status) || is_int($status));
+
+                    $json = json_encode($data);
+
+                    if (false === $json) {
+                        throw new InvalidArgumentException('Unable to encode the JSON body: '.json_last_error_msg());
+                    }
+
+                    if (!is_null($status)) {
+                        $this->status = $status;
+                    }
+
+                    $this->setHeader('Content-Type', 'application/json');
+
+                    return $this->setBody($json);
+                }
+
+                /**
+                 * Redirect to another URL.
+                 */
+                public function redirect(string $url, int $status = 302)
+                {
+                    $this->status = $status;
+
+                    return $this->setHeader('Location', $url);
+                }
+
+                /**
+                 * Send status, headers, cookies and body.
+                 */
+                public function send()
+                {
+                    http_response_code($this->status);
+
+                    foreach ($this->headers as $header) {
+                        header($header[0].': '.$header[1]);
+                    }
+
+                    foreach ($this->cookies as $name => $cookie) {
+                        list($value, $options) = $cookie;
+
+                        if (PHP_VERSION_ID >= 70300) {
+                            setcookie($name, $value, $options);
+                        } else {
+                            // samesite isn't supported before PHP 7.3
+                            setcookie($name, $value, $options['expires'], $options['path'], $options['domain'], $options['secure'], $options['httponly']);
+                        }
+                    }
+
+                    echo $this->body;
+                }
+            };
         };
 
         /**
@@ -4295,6 +4869,7 @@ return new class () {
         $matches = &$this->matches;
         $deps = &$this->deps;
         $base = &$this->base;
+        $responded = &$this->responded;
 
         // base path for each route defined once
         if (is_null($base)) {
@@ -4400,6 +4975,65 @@ return new class () {
         }
 
         /**
+         * Function invoking route callbacks.
+         *
+         * The route parameters are exposed by the request service, the first
+         * response returned by a callback is sent and the next callbacks are skipped.
+         *
+         * @param callback $cb     Route callback
+         * @param array    $args   Arguments of the callback
+         * @param array    $params Named route parameters
+         *
+         * @return void
+         */
+        $dispatch = function ($cb, array $args, array $params) use (&$deps, &$responded) {
+            // the output of all the callbacks is buffered until the end of
+            // the script, so a response can set status and headers after it
+            static $buffered = false;
+
+            if (!$buffered) {
+                $buffered = ob_start();
+            }
+
+            if ($responded) {
+                return;
+            }
+
+            if (!empty($deps['request']) && is_object($deps['request']) && method_exists($deps['request'], 'setParams')) {
+                $deps['request']->setParams($params);
+            }
+
+            ob_start();
+
+            try {
+                $result = call_user_func_array($cb, $args);
+            } catch (Throwable $exception) {
+                ob_end_flush();
+
+                throw $exception;
+            }
+
+            $output = ob_get_clean();
+
+            if (!is_object($result) || !method_exists($result, 'send')) {
+                echo $output;
+
+                return;
+            }
+
+            $responded = true;
+
+            // the output of the callback is the beginning of the response body
+            if ('' !== $output && method_exists($result, 'body') && method_exists($result, 'setBody')) {
+                $result->setBody($output.$result->body());
+                $output = '';
+            }
+
+            $result->send();
+            echo $output;
+        };
+
+        /**
          * Function used as a router.
          *
          * @param string   $regex    Regular expression used to match requested URL
@@ -4411,7 +5045,7 @@ return new class () {
          *
          * @return void
          */
-        $deploy = function ($regex, $cb, $method = 'GET', $priority = 0) use (&$deploy, &$matches, $base) {
+        $deploy = function ($regex, $cb, $method = 'GET', $priority = 0) use (&$deploy, &$matches, $base, $dispatch) {
             // Checking well formed call
             assert(is_string($regex));
             assert(is_callable($cb));
@@ -4434,6 +5068,14 @@ return new class () {
             ) {
                 // Named subpatterns are allowed
                 // http://it2.php.net/manual/en/regexp.reference.subpatterns.php
+                $named = [];
+
+                foreach ($submatches as $key => $value) {
+                    if (is_string($key)) {
+                        $named[$key] = $value;
+                    }
+                }
+
                 $submatches = array_unique($submatches);
                 // If matches is provided, then it is filled with the results of search.
                 // $submatches[0] will contain the text that matched the full pattern,
@@ -4468,11 +5110,10 @@ return new class () {
                 if (array_intersect(array_keys($params), array_keys($submatches))) {
                     $submatches = array_merge($params, $submatches);
                 }
-                array_unshift($submatches, $cb);
 
                 // register_shutdown_function is used to call added functions when script ends
                 // http://it2.php.net/manual/en/function.register-shutdown-function.php
-                return call_user_func_array('register_shutdown_function', array_values($submatches));
+                return register_shutdown_function($dispatch, $cb, array_values($submatches), $named);
             }
         };
 

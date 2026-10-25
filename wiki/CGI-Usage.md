@@ -52,6 +52,13 @@ $mf('/(?P<user>[^\/]+)/(?P<verb>[^\/]+)', function ($verb, $user) {
 // Output: hello bob!
 ```
 
+Callbacks can also return a response and read the request, see [[Request Response]] and [[Middleware]].
+```php
+$mf('/api/users/(?P<id>[0-9]+)', function ($id) use ($mf) {
+    return $mf('response')->json(['id' => (int) $id]);
+});
+```
+
 **Attention:** don't forget to configure your [[webserver|Webserver Configuration]]!
 
 ## Priorities
