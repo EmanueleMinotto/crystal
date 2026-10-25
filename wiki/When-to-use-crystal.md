@@ -3,7 +3,7 @@ See [[Comparison]] for how it compares with the other frameworks.
 
 ## Good fits
 
--   **Free and shared hosting with only FTP**: no SSH, no Composer, no CLI. Crystal is one file to upload, see [InfinityFree](#infinityfree) below.
+-   **Free and shared hosting with only FTP**: no SSH, no Composer, no CLI. Crystal is one file to upload, see [InfinityFree](#infinityfree) and the [other hostings](#other-hostings) below.
 -   **Hosting with a file (inode) limit**: one file instead of the thousands installed in `vendor/` by full-stack frameworks.
 -   **Old PHP versions**: it runs on PHP 7.0 to 8.5, useful on legacy servers that can't be upgraded yet.
 -   **Small websites and prototypes**: landing pages, portfolios, contact forms, small blogs, admin panels, hackathons.
@@ -112,6 +112,29 @@ $mf('/migrate', $mf('middleware')->wrap(function () use ($mf) {
 -   [Browser security system](https://forum.infinityfree.com/t/browser-security-system-features-and-limitations/49353) and [API access](https://forum.infinityfree.com/t/why-isnt-api-access-working-on-my-website/115198)
 -   [Sending email with SMTP](https://forum.infinityfree.com/t/how-to-send-mail-from-free-infinity-hosting/68978)
 
-## Other limited hostings
+## Other hostings
 
-The same considerations apply to most free and cheap shared hostings: when there's no SSH or Composer, check the PHP version, the available extensions (`phpinfo()`), whether `mail()` and outgoing connections are allowed, and the files limits.
+Crystal fits the hostings where Composer and SSH aren't available, or where the space and the files are limited.
+Details below are the ones reported in October 2026 by the providers or by their communities, check them before choosing one.
+
+| Hosting | Type | Why crystal fits | Watch out for |
+| --- | --- | --- | --- |
+| [Byet.host](https://byet.host/), ProFreeHost, AeonFree and the other iFastNet free hostings | free | same platform of InfinityFree: no SSH, FTP upload | the same browser check of InfinityFree blocks API clients, so the [InfinityFree](#infinityfree) notes apply; cron and mail policies may differ |
+| [AwardSpace](https://www.awardspace.com/) | free | crystal runs on PHP 7.0 and newer, useful if the server still offers PHP 7 | PHP 8 isn't guaranteed on the free plan, PHP 5 isn't supported by crystal; 1 GB of space and one MySQL database |
+| [Freehostia](https://www.freehostia.com/) (Chocolate plan) | free | `crystal.php` (about 230 KB) fits the 2 MB per-file limit and the 250 MB of space | the MySQL database is limited to 10 MB |
+| [Altervista](https://www.altervista.org/) | free (Italian) | no Composer needed, the PHP version can be selected in the control panel (up to PHP 8.4 according to the forum) | the PHP core is customized by Altervista and SSH isn't advertised; check `phpinfo()` |
+| Entry-level shared hostings without SSH (like the basic Aruba Linux plans, where SSH is listed only in the advanced ones) | paid | no need to run Composer locally and upload thousands of files from `vendor/` | the PHP version and the extensions depend on the plan |
+| NAS (like Synology Web Station) and Raspberry Pi | self-hosted | one file in the web folder, PHP from the package manager (Synology recommends PHP 8.2 to 8.4) | the PHP extensions have to be enabled in the PHP profile; expose it to the Internet only behind HTTPS |
+
+000webhost, often suggested by older guides, was closed by Hostinger in 2024.
+
+On any limited hosting check the PHP version and the available extensions (`phpinfo()`), whether `mail()` and outgoing connections are allowed, the files limits and whether the requests of non-browser clients reach your site.
+
+### Sources
+
+-   [Byet.host](https://byet.host/) and [the iFastNet browser check](https://forum.infinityfree.com/t/i-cant-create-apis-on-infinityfree-and-other-hostings-that-are-powered-by-ifastnet/76039)
+-   [Free PHP hosting providers compared](https://www.websiteplanet.com/blog/best-free-php-hosting/) (AwardSpace, Freehostia)
+-   [Altervista PHP versions](https://forum.it.altervista.org/i-servizi-di-altervista/295339-aggiornamento-php.html)
+-   [Aruba hosting plans](https://www.punto-informatico.it/hosting-php-migliore/)
+-   [Synology: end of PHP 8.1 support](https://www.synology.com/products/status/eol-php81)
+-   [000webhost closes](https://www.hostinger.com/blog/000webhost-closes)
