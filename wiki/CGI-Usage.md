@@ -87,6 +87,8 @@ To break callbacks chain use the [`exit()`](http://it2.php.net/manual/en/functio
 
 ## Page not found
 
+With the [[Errors]] handling enabled, requests not matching any route receive a 404 (or 405) response automatically.
+
 The [HTTP 404 error](https://en.wikipedia.org/wiki/HTTP_404) is defined as a regular expression too and is matched if no one of **currently** defined regular expressions match current URL.
 To retrieve the 404 regular expression call the function with the argument `router:not-found` (available only if not in CLI mode).
 ```php

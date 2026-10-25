@@ -43,6 +43,19 @@ return new class () {
      */
     private $responded = false;
 
+    /**
+     * State of the routing: priorities still to be matched, whether a route
+     * matched and the methods of routes matching only the path.
+     *
+     * @var array
+     */
+    private $routing = [
+        'pending' => 0,
+        'matched' => false,
+        'methods' => [],
+        'finalizer' => false,
+    ];
+
     public function __construct()
     {
         // services write on $deps, so it has to be bound to the property
@@ -59,6 +72,7 @@ return new class () {
         $deps = &$this->deps;
         $base = &$this->base;
         $responded = &$this->responded;
+        $routing = &$this->routing;
 
         // base path for each route defined once
         if (is_null($base)) {
@@ -183,13 +197,15 @@ return new class () {
         $dispatch = function ($cb, array $args, array $params) use (&$deps, &$responded) {
             // the output of all the callbacks is buffered until the end of
             // the script, so a response can set status and headers after it
-            static $buffered = false;
+            static $level = null;
 
-            if (!$buffered) {
-                $buffered = ob_start();
+            if (is_null($level) && ob_start()) {
+                $level = ob_get_level();
             }
 
-            if ($responded) {
+            $errors = $deps['errors'] ?? null;
+
+            if ($responded || (is_object($errors) && method_exists($errors, 'hasSent') && $errors->hasSent())) {
                 return;
             }
 
@@ -202,9 +218,25 @@ return new class () {
             try {
                 $result = call_user_func_array($cb, $args);
             } catch (Throwable $exception) {
-                ob_end_flush();
+                if (!is_object($errors) || !method_exists($errors, 'isEnabled') || !$errors->isEnabled()) {
+                    ob_end_flush();
 
-                throw $exception;
+                    throw $exception;
+                }
+
+                // the output of the route callbacks is replaced by the error response
+                while (ob_get_level() > (int) $level) {
+                    ob_end_clean();
+                }
+
+                if (!is_null($level) && ob_get_level() === $level) {
+                    ob_clean();
+                }
+
+                $responded = true;
+                $errors->send($errors->handle($exception));
+
+                return;
             }
 
             $output = ob_get_clean();
@@ -228,6 +260,34 @@ return new class () {
         };
 
         /**
+         * Function invoked after the routing, when no route matches the
+         * request the errors service (if enabled) sends a 404 or 405 response.
+         *
+         * @return void
+         */
+        $finalize = function () use (&$finalize, &$routing, &$deps, &$responded) {
+            if ($routing['pending'] > 0) {
+                // routes with a priority are matched later
+                return register_shutdown_function($finalize);
+            }
+
+            $errors = $deps['errors'] ?? null;
+
+            if (
+                $routing['matched'] ||
+                $responded ||
+                !is_object($errors) ||
+                !method_exists($errors, 'isEnabled') ||
+                !$errors->isEnabled() ||
+                $errors->hasSent()
+            ) {
+                return;
+            }
+
+            $errors->send($errors->notFound($routing['methods']));
+        };
+
+        /**
          * Function used as a router.
          *
          * @param string   $regex    Regular expression used to match requested URL
@@ -239,7 +299,7 @@ return new class () {
          *
          * @return void
          */
-        $deploy = function ($regex, $cb, $method = 'GET', $priority = 0) use (&$deploy, &$matches, $base, $dispatch) {
+        $deploy = function ($regex, $cb, $method = 'GET', $priority = 0) use (&$deploy, &$matches, &$routing, $base, $dispatch, $finalize) {
             // Checking well formed call
             assert(is_string($regex));
             assert(is_callable($cb));
@@ -251,15 +311,32 @@ return new class () {
             // http://3v4l.org/7MC3j
             $matches[hash('adler32', $regex)] = $regex;
 
-            if ($priority > 0) {
-                // Recursion is used to set callback priority
-                return register_shutdown_function($deploy, $regex, $cb, $method, $priority - 1);
+            if (!$routing['finalizer']) {
+                register_shutdown_function($finalize);
+                $routing['finalizer'] = true;
             }
 
-            if (
-                preg_match('#'.$method.'#', $_SERVER['REQUEST_METHOD']) &&
-                preg_match('#^'.$base.$regex.'$#', parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), $submatches)
-            ) {
+            if ($priority > 0) {
+                ++$routing['pending'];
+
+                // Recursion is used to set callback priority
+                return register_shutdown_function(function () use (&$deploy, &$routing, $regex, $cb, $method, $priority) {
+                    --$routing['pending'];
+
+                    return $deploy($regex, $cb, $method, $priority - 1);
+                });
+            }
+
+            if (preg_match('#^'.$base.$regex.'$#', parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), $submatches)) {
+                if (!preg_match('#'.$method.'#', $_SERVER['REQUEST_METHOD'])) {
+                    // used for the 405 response
+                    $routing['methods'][] = $method;
+
+                    return;
+                }
+
+                $routing['matched'] = true;
+
                 // Named subpatterns are allowed
                 // http://it2.php.net/manual/en/regexp.reference.subpatterns.php
                 $named = [];
