@@ -14,13 +14,29 @@ For example using the [[Configuration]]:
 $mf('errors')->enable((bool) $mf('config')->env('APP_DEBUG', false));
 ```
 
+For APIs, the second argument sets the options:
+
+```php
+$mf('errors')->enable(false, [
+    'json' => '/api/.*',  // paths always answered in JSON
+    'problem' => true,    // Problem Details (RFC 9457)
+]);
+```
+
+| Option | Description |
+| --- | --- |
+| `json` | regular expression of the paths always answered in JSON, relative to the base path like the routes (`.*` for all of them), the other ones are JSON when the client asks for it |
+| `problem` | JSON responses are [Problem Details](https://www.rfc-editor.org/rfc/rfc9457), see below |
+
+Unknown options throw an `InvalidArgumentException`.
+
 ## Exceptions
 
 When a route callback throws an exception:
 
 -   the output of the route callbacks is discarded and an error response is sent, the next route callbacks aren't invoked
 -   exceptions with a 5xx status code are reported, by default to the [[Logger]]
--   the response is JSON when the client asks for it (`Accept` header or JSON body), an HTML page otherwise
+-   the response is JSON when the client asks for it (`Accept` header or JSON body) or for the paths of the `json` option, an HTML page otherwise
 
 Exceptions thrown outside the route callbacks are handled too.
 
@@ -29,6 +45,14 @@ In production only the status is shown, plus the message of 4xx errors thrown wi
 
 ```json
 {"error":{"status":500,"title":"Internal Server Error"}}
+```
+
+### Problem Details
+
+With the `problem` option, JSON responses follow [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) with the `application/problem+json` content type: the message is the `detail` member, validation errors and debug details are extension members.
+
+```json
+{"type":"about:blank","title":"Unprocessable Content","status":422,"detail":"The given data is invalid.","errors":{"age":["The age field must be an integer."]}}
 ```
 
 ## HTTP errors

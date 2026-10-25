@@ -38,6 +38,16 @@ $deps['errors'] = new class ($deps) {
     private $sent = false;
 
     /**
+     * Options, see `enable()`.
+     *
+     * @var array
+     */
+    private $options = [
+        'json' => null,
+        'problem' => false,
+    ];
+
+    /**
      * Custom renderer, receives status, exception (or null) and request, returns a response.
      *
      * @var callable|null
@@ -86,11 +96,29 @@ $deps['errors'] = new class ($deps) {
     /**
      * Enable the error handling.
      *
-     * @param bool $debug Show the exceptions details, never enable it in production
+     * Options:
+     * - json: regular expression of the paths always answered in JSON (like `/api/.*`),
+     *   relative to the base path like the routes, the other ones are JSON when requested
+     * - problem: JSON responses are Problem Details (RFC 9457), with the
+     *   `application/problem+json` content type
+     *
+     * @param bool  $debug   Show the exceptions details, never enable it in production
+     * @param array $options Options
+     *
+     * @link https://www.rfc-editor.org/rfc/rfc9457
+     *
+     * @throws InvalidArgumentException For unknown options
      */
-    public function enable(bool $debug = false)
+    public function enable(bool $debug = false, array $options = [])
     {
+        $unknown = array_diff_key($options, $this->options);
+
+        if (!empty($unknown)) {
+            throw new InvalidArgumentException(sprintf('Unknown errors options: %s.', implode(', ', array_keys($unknown))));
+        }
+
         $this->debug = $debug;
+        $this->options = $options + $this->options;
 
         if ($this->enabled) {
             return;
@@ -246,7 +274,8 @@ $deps['errors'] = new class ($deps) {
     }
 
     /**
-     * Render an error response, JSON when requested by the client, HTML otherwise.
+     * Render an error response, JSON when requested by the client
+     * or for the paths of the `json` option, HTML otherwise.
      *
      * @param int            $status
      * @param Throwable|null $exception
@@ -280,9 +309,31 @@ $deps['errors'] = new class ($deps) {
         $fields = !is_null($exception) && method_exists($exception, 'getErrors') ? (array) $exception->getErrors() : [];
 
         $response = $this->service('response')->setStatus($status);
-        $accept = (string) $request->header('Accept', '');
 
-        if (false !== stripos($accept, 'json') || $request->isJson()) {
+        if ($this->wantsJson($request)) {
+            if ($this->options['problem']) {
+                $problem = ['type' => 'about:blank', 'title' => $title, 'status' => $status];
+
+                if ('' !== $message) {
+                    $problem['detail'] = $message;
+                }
+
+                // extension members
+                if (!empty($fields)) {
+                    $problem['errors'] = $fields;
+                }
+
+                if ($this->debug && !is_null($exception)) {
+                    $problem['exception'] = get_class($exception);
+                    $problem['file'] = $exception->getFile().':'.$exception->getLine();
+                    $problem['trace'] = explode("\n", $exception->getTraceAsString());
+                }
+
+                return $response
+                    ->json($problem)
+                    ->setHeader('Content-Type', 'application/problem+json');
+            }
+
             $error = ['status' => $status, 'title' => $title];
 
             if ('' !== $message) {
@@ -340,6 +391,26 @@ $deps['errors'] = new class ($deps) {
                 $e($title),
                 $details
             ));
+    }
+
+    /**
+     * Whether the error response of the request is JSON.
+     *
+     * @param object $request
+     */
+    private function wantsJson($request): bool
+    {
+        if (false !== stripos((string) $request->header('Accept', ''), 'json') || $request->isJson()) {
+            return true;
+        }
+
+        if (is_null($this->options['json'])) {
+            return false;
+        }
+
+        $base = empty($_SERVER['REQUEST_URI']) ? '' : quotemeta(rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\'));
+
+        return (bool) preg_match('#^'.$base.$this->options['json'].'$#', $request->path());
     }
 
     /**

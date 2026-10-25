@@ -34,6 +34,19 @@ $mf('/users/(?P<id>[0-9]+)', function () use ($mf) {
 
 `setBody()` replaces the raw body, i.e. in tests.
 
+### Malformed JSON
+
+When the `Content-Type` is JSON but the body can't be decoded, `isMalformedJson()` is `true` (empty bodies aren't malformed) and:
+
+-   `validate()` throws an exception with status code 400
+-   `input()` throws it too when the [[Errors]] handling is enabled, it returns an empty array otherwise
+
+With the [[Errors]] handling enabled, the client receives a 400 response:
+
+```json
+{"error":{"status":400,"title":"Bad Request","message":"Malformed JSON body: Syntax error."}}
+```
+
 ## Response
 
 `$mf('response')` returns a new response each time, its methods can be chained:

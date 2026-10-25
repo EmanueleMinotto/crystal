@@ -86,6 +86,8 @@ $deps['request'] = new class ($deps) {
 
     /**
      * Body values, from a form or from a JSON object, all of them without a key.
+     *
+     * @throws RuntimeException With status code 400, when the JSON body is malformed and the errors handling is enabled
      */
     public function input($key = null, $default = null)
     {
@@ -93,7 +95,17 @@ $deps['request'] = new class ($deps) {
 
         if ($this->isJson()) {
             $input = $this->json();
-            $input = is_array($input) ? $input : [];
+
+            if (!is_array($input)) {
+                $errors = $this->deps['errors'] ?? null;
+
+                // without the errors handling malformed bodies are empty, like before it
+                if (is_object($errors) && method_exists($errors, 'isEnabled') && $errors->isEnabled()) {
+                    $this->checkJson();
+                }
+
+                $input = [];
+            }
         }
 
         return is_null($key) ? $input : ($input[$key] ?? $default);
@@ -105,10 +117,13 @@ $deps['request'] = new class ($deps) {
      * @param array $rules    Rules of each field, see the validator service
      * @param array $messages Custom messages, keys are "field.rule" or "rule"
      *
-     * @throws RuntimeException With status code 422 and the `getErrors` method, when the data isn't valid
+     * @throws RuntimeException With status code 422 and the `getErrors` method, when the data isn't valid,
+     *                          with status code 400 when the JSON body is malformed
      */
     public function validate(array $rules, array $messages = []): array
     {
+        $this->checkJson();
+
         $validator = $this->deps['validator'];
         $validator = is_callable($validator) ? call_user_func($validator) : $validator;
 
@@ -121,6 +136,21 @@ $deps['request'] = new class ($deps) {
     public function isJson(): bool
     {
         return false !== stripos((string) $this->header('Content-Type', ''), 'json');
+    }
+
+    /**
+     * Whether the body is JSON according to the Content-Type header, but it can't be decoded.
+     * Empty bodies aren't malformed.
+     */
+    public function isMalformedJson(): bool
+    {
+        if (!$this->isJson() || '' === trim($this->body())) {
+            return false;
+        }
+
+        json_decode($this->body());
+
+        return JSON_ERROR_NONE !== json_last_error();
     }
 
     /**
@@ -213,5 +243,27 @@ $deps['request'] = new class ($deps) {
     public function setAttribute(string $name, $value)
     {
         $this->attributes[$name] = $value;
+    }
+
+    /**
+     * Stop the request with a 400 response when the JSON body is malformed.
+     *
+     * @throws RuntimeException With status code 400
+     */
+    private function checkJson()
+    {
+        if (!$this->isMalformedJson()) {
+            return;
+        }
+
+        $message = 'Malformed JSON body: '.json_last_error_msg().'.';
+        $errors = $this->deps['errors'] ?? null;
+        $errors = is_callable($errors) ? call_user_func($errors) : $errors;
+
+        if (is_object($errors) && method_exists($errors, 'abort')) {
+            $errors->abort(400, $message);
+        }
+
+        throw new UnexpectedValueException($message);
     }
 };
