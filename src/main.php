@@ -197,10 +197,22 @@ return new class () {
                 // subpattern, and so on.
                 unset($submatches[0]);
 
+                // Wrappers (like protected routes) expose the wrapped callback,
+                // so its parameters can be used for named subpatterns.
+                $target = is_object($cb) && method_exists($cb, 'getCrystalCallable')
+                    ? $cb->getCrystalCallable()
+                    : $cb;
+
                 // Snippet used to extract parameter from a callable object.
-                $reflector = (is_string($cb) && function_exists($cb)) || $cb instanceof Closure
-                    ? new ReflectionFunction($cb)
-                    : new ReflectionMethod($cb);
+                if ((is_string($target) && function_exists($target)) || $target instanceof Closure) {
+                    $reflector = new ReflectionFunction($target);
+                } elseif (is_array($target)) {
+                    $reflector = new ReflectionMethod($target[0], $target[1]);
+                } elseif (is_object($target)) {
+                    $reflector = new ReflectionMethod($target, '__invoke');
+                } else {
+                    $reflector = new ReflectionMethod($target);
+                }
                 $params = [];
 
                 foreach ($reflector->getParameters() as $parameter) {

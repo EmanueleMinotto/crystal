@@ -29,6 +29,7 @@ $mf('/', function () {
 -   a [Cache](https://github.com/EmanueleMinotto/crystal/wiki/Cache) system with APCu, array, filesystem, database, Memcached and Redis drivers, namespaces and chains
 -   a [Mailer](https://github.com/EmanueleMinotto/crystal/wiki/Mailer) to send emails using `mail()` or SMTP
 -   a [Configuration](https://github.com/EmanueleMinotto/crystal/wiki/Configuration) system with `.env` files support
+-   [Authentication](https://github.com/EmanueleMinotto/crystal/wiki/Authentication) with sessions, password hashing, protected routes and gates
 -   **no external dependencies, just a single PHP file!**
 
 ## Documentation
