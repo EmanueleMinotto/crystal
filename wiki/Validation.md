@@ -16,6 +16,23 @@ $mf('/users', function () use ($mf) {
 
 Rules without parameters are values (`'required'`), rules with parameters are keys (`'max' => 255`).
 
+## Validating the request
+
+`$mf('request')->validate($rules, $messages)` validates the query string and the body values (from a form or a JSON object) together, the body values take precedence:
+
+```php
+$mf('/api/users', function () use ($mf) {
+    $data = $mf('request')->validate([
+        'email' => ['required', 'email'],
+        'name' => ['required', 'string', 'max' => 100],
+    ]);
+
+    return $mf('response')->json(['user' => $data], 201);
+}, 'POST');
+```
+
+It's the same as `$mf('validator')->validate(array_replace($request->query(), $request->input()), $rules, $messages)`.
+
 ## Results
 
 `validate()` returns the fields having rules and present in the data, ignoring the other ones.

@@ -16,6 +16,7 @@ $mf('/users/(?P<id>[0-9]+)', function () use ($mf) {
 
     $request->query('page', 1);       // $_GET
     $request->input('name');          // $_POST, or the JSON body when the Content-Type is JSON
+    $request->validate(['name' => ['required']]); // validated query string and body values, see Validation
     $request->json();                 // decoded JSON body
     $request->body();                 // raw body
     $request->header('Accept');       // header names are case insensitive

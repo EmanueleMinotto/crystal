@@ -6,7 +6,14 @@
  * Values are read from the superglobals when requested, so changes made
  * to them (by the application or by other services) are always visible.
  */
-$deps['request'] = new class () {
+$deps['request'] = new class ($deps) {
+    /**
+     * Dynamic set of dependencies, used to retrieve the validator service.
+     *
+     * @var array
+     */
+    private $deps;
+
     /**
      * Raw body, null when not read yet.
      *
@@ -27,6 +34,14 @@ $deps['request'] = new class () {
      * @var array
      */
     private $attributes = [];
+
+    /**
+     * @param array $deps Dynamic set of dependencies.
+     */
+    public function __construct(array &$deps = [])
+    {
+        $this->deps = &$deps;
+    }
 
     /**
      * Request method, uppercase.
@@ -82,6 +97,22 @@ $deps['request'] = new class () {
         }
 
         return is_null($key) ? $input : ($input[$key] ?? $default);
+    }
+
+    /**
+     * Validate the query string and body values (they take precedence), returning the validated fields.
+     *
+     * @param array $rules    Rules of each field, see the validator service
+     * @param array $messages Custom messages, keys are "field.rule" or "rule"
+     *
+     * @throws RuntimeException With status code 422 and the `getErrors` method, when the data isn't valid
+     */
+    public function validate(array $rules, array $messages = []): array
+    {
+        $validator = $this->deps['validator'];
+        $validator = is_callable($validator) ? call_user_func($validator) : $validator;
+
+        return $validator->validate(array_replace($this->query(), $this->input()), $rules, $messages);
     }
 
     /**
