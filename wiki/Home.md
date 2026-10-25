@@ -35,5 +35,6 @@ $mf('/', function () {
 -   [[Request Response]] objects and [[Middleware]]
 -   [[Validation]] of the input data
 -   [[Errors]] handling with error pages, 404 and 405 responses
+-   [[CORS]] headers and automatic `OPTIONS` (preflight) responses
 -   [[Session]] with hardened cookies and [[CSRF]] protection
 -   **no external dependencies, just a single PHP file!**

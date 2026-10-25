@@ -56,6 +56,7 @@ Exceptions with a `getErrors()` method, like the ones thrown by the [[Validation
 
 When no route matches the request, a 404 response is sent.
 When some routes match the path but not the request method, a 405 response is sent, with the `Allow` header when the methods are simple lists like `GET|POST`.
+When [[CORS]] is enabled, `OPTIONS` requests are an exception: they receive a 204 response with the `Allow` header.
 
 Routes with a priority are matched before deciding, and a route defined with `router:not-found` (see [[CGI Usage]]) replaces the automatic 404 response.
 
