@@ -35,6 +35,12 @@ return function ($mf, PDO $pdo) {
     $db->update('order', ['group' => 'updated'], [1, 2], 'id');
     echo 'update in: '.json_encode($db->select('order', 'group', null, 'id'))."\n";
 
+    // pagination: COUNT(*) and LIMIT with OFFSET
+    $_GET['page'] = '2';
+    $page = $mf('paginator')->paginate('order', ['group' => 'updated'], 'id', 1, 'id');
+    unset($_GET['page']);
+    echo 'paginate: '.json_encode([$page['data'], $page['meta']['total'], $page['meta']['pages']])."\n";
+
     $db->delete('order', [], 'id');
     echo 'delete nothing: '.count($db->select('order'))."\n";
     $db->delete('order', [1, 3], 'id');

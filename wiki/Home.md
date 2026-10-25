@@ -26,7 +26,7 @@ $mf('/', function () {
 -   a [[Template Engine]]
 -   a [[Logger]] based on [PSR-3](https://www.php-fig.org/psr/psr-3/)
 -   a [[Database]] interaction system
--   database [[Migrations]]
+-   database [[Migrations]] and [[Pagination]] with the `Link` header
 -   a [[Cache]] system with APCu, array, filesystem, database, Memcached and Redis drivers, namespaces and chains
 -   a [[Mailer]] to send emails using `mail()` or SMTP
 -   a [[Configuration]] system with `.env` files support

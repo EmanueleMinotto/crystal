@@ -105,6 +105,8 @@ $mf(function () use ($mf) {
 });
 ```
 
+To split the rows in pages, see [[Pagination]].
+
 ## Supported databases
 
 Table and column names are quoted using the syntax of the connected database: backticks for MySQL, MariaDB and SQLite, brackets for SQL Server, double quotes (the SQL standard) for PostgreSQL and the others.
