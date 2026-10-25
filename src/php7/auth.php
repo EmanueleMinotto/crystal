@@ -252,8 +252,8 @@ $deps['auth'] = new class ($deps) {
 
             if (!$created) {
                 $database->query(sprintf(
-                    'CREATE TABLE IF NOT EXISTS `%s` (selector VARCHAR(255) NOT NULL PRIMARY KEY, hash VARCHAR(255) NOT NULL, user_id VARCHAR(255) NOT NULL, expires INT NOT NULL)',
-                    $table
+                    'CREATE TABLE IF NOT EXISTS %s (selector VARCHAR(255) NOT NULL PRIMARY KEY, hash VARCHAR(255) NOT NULL, user_id VARCHAR(255) NOT NULL, expires INT NOT NULL)',
+                    $database->quoteIdentifier($table)
                 ));
                 $created = true;
             }

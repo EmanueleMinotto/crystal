@@ -231,9 +231,10 @@ $deps['migrations'] = new class ($deps) {
      */
     private function createTable()
     {
-        $this->database()->query(sprintf(
-            'CREATE TABLE IF NOT EXISTS `%s` (version VARCHAR(255) NOT NULL PRIMARY KEY, applied_at INT NOT NULL)',
-            $this->table
+        $database = $this->database();
+        $database->query(sprintf(
+            'CREATE TABLE IF NOT EXISTS %s (version VARCHAR(255) NOT NULL PRIMARY KEY, applied_at INT NOT NULL)',
+            $database->quoteIdentifier($this->table)
         ));
     }
 

@@ -92,8 +92,27 @@ $mf(function () use ($mf) {
 
     // select limited
     $db->select('my_table', ['id', 'column1'], [], null, 2);
+
+    // select, update or delete a list of rows
+    $db->select('my_table', null, [1, 2, 3]);              // id IN (1, 2, 3)
+    $db->delete('my_table', ['foo', 'bar'], 'name');       // name IN ('foo', 'bar')
+    $db->delete('my_table', [], 'name');                   // an empty list matches no rows
 });
 ```
+
+## Supported databases
+
+Table and column names are quoted using the syntax of the connected database: backticks for MySQL, MariaDB and SQLite, brackets for SQL Server, double quotes (the SQL standard) for PostgreSQL and the others.
+So reserved words like `order` or `group` can be used as names.
+
+```php
+$db->quoteIdentifier('order');       // `order` on MySQL, "order" on PostgreSQL
+$db->quoteIdentifier('app.users');   // `app`.`users` on MySQL
+```
+
+Custom SQL (conditions, ordering, `query`) isn't changed, so use `quoteIdentifier` there too when needed.
+
+MySQL, MariaDB, PostgreSQL and SQLite are tested. On SQL Server `read` and the limit of `select` don't work, since `LIMIT` isn't supported.
 
 ## Transactions
 

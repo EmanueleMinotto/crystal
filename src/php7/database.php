@@ -19,6 +19,37 @@ $deps['database'] = new class () {
     }
 
     /**
+     * Quote a table or column name, using the syntax of the database.
+     *
+     * Names containing a dot (like `schema.table`) are quoted part by part.
+     */
+    public function quoteIdentifier(string $name): string
+    {
+        switch (static::$pdo->getAttribute(PDO::ATTR_DRIVER_NAME)) {
+            case 'mysql':
+                // SQLite reads unknown double quoted identifiers as strings
+            case 'sqlite':
+                $quotes = ['`', '`'];
+
+                break;
+
+            case 'sqlsrv':
+            case 'dblib':
+                $quotes = ['[', ']'];
+
+                break;
+
+            default:
+                // SQL standard, used by PostgreSQL, Oracle, ...
+                $quotes = ['"', '"'];
+        }
+
+        return implode('.', array_map(function ($part) use ($quotes) {
+            return $quotes[0].str_replace($quotes[1], $quotes[1].$quotes[1], $part).$quotes[1];
+        }, explode('.', $name)));
+    }
+
+    /**
      * Execute a query and parse result rows as array.
      */
     public function query(string $sql, array $params = [])
@@ -50,12 +81,12 @@ $deps['database'] = new class () {
         if (is_array($fields)) {
             $fields = join(', ', array_map(function ($field) {
                 return preg_match('/^[a-zA-Z0-9\_]+$/', $field)
-                    ? sprintf('`%s`', $field)
+                    ? $this->quoteIdentifier($field)
                     : $field;
             }, $fields));
         }
 
-        $sql = sprintf('SELECT %s FROM `%s`', $fields, $table);
+        $sql = sprintf('SELECT %s FROM %s', $fields, $this->quoteIdentifier($table));
 
         $params = [];
 
@@ -86,9 +117,9 @@ $deps['database'] = new class () {
     {
         $keys = array_keys($values);
         $sql = sprintf(
-            'INSERT INTO `%s` (%s) VALUES (:%s)',
-            $table,
-            implode(', ', $keys),
+            'INSERT INTO %s (%s) VALUES (:%s)',
+            $this->quoteIdentifier($table),
+            implode(', ', array_map([$this, 'quoteIdentifier'], $keys)),
             implode(', :', $keys)
         );
 
@@ -107,7 +138,11 @@ $deps['database'] = new class () {
     public function read(string $table, $where, $key = 'id')
     {
         $where = $this->buildWhereCondition($where, $key);
-        $stmt = static::$pdo->prepare(sprintf('SELECT * FROM `%s` WHERE %s LIMIT 1', $table, $where['sql']));
+        $stmt = static::$pdo->prepare(sprintf(
+            'SELECT * FROM %s WHERE %s LIMIT 1',
+            $this->quoteIdentifier($table),
+            $where['sql']
+        ));
         $stmt->execute($where['params']);
 
         return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
@@ -122,11 +157,16 @@ $deps['database'] = new class () {
         $keys = array_keys($values);
 
         $set = join(', ', array_map(function ($key) {
-            return sprintf('`%s` = :%s', $key, $key);
+            return sprintf('%s = :%s', $this->quoteIdentifier($key), $key);
         }, $keys));
 
         $where = $this->buildWhereCondition($where, $key);
-        $stmt = static::$pdo->prepare(sprintf('UPDATE `%s` SET %s WHERE %s', $table, $set, $where['sql']));
+        $stmt = static::$pdo->prepare(sprintf(
+            'UPDATE %s SET %s WHERE %s',
+            $this->quoteIdentifier($table),
+            $set,
+            $where['sql']
+        ));
 
         return $stmt->execute(array_merge($where['params'], $params));
     }
@@ -137,7 +177,11 @@ $deps['database'] = new class () {
     public function delete(string $table, $where, $key = 'id')
     {
         $where = $this->buildWhereCondition($where, $key);
-        $stmt = static::$pdo->prepare(sprintf('DELETE FROM `%s` WHERE %s', $table, $where['sql']));
+        $stmt = static::$pdo->prepare(sprintf(
+            'DELETE FROM %s WHERE %s',
+            $this->quoteIdentifier($table),
+            $where['sql']
+        ));
 
         return $stmt->execute($where['params']);
     }
@@ -212,23 +256,9 @@ $deps['database'] = new class () {
 
             // 1 => `id` = 1
             // 'foo' => `id` = "foo"
-            if (is_scalar($value) || is_numeric($value)) {
-                return [
-                    'params' => [
-                        ':id' => $value
-                    ],
-                    'sql' => '`id` = :id',
-                ];
-            }
-
-            if (array_is_list($value)) {
-                // [1, 'foo'] => `id` IN (1, "foo")
-                return [
-                    'params' => [
-                        ':id' => $value
-                    ],
-                    'sql' => '`id` IN (:id)',
-                ];
+            // [1, 'foo'] => `id` IN (1, "foo")
+            if (is_scalar($value) || array_is_list($value)) {
+                return $this->buildWhereCondition($value, 'id');
             }
 
             if (is_array($value)) {
@@ -240,7 +270,7 @@ $deps['database'] = new class () {
                 foreach ($value as $k => $v) {
                     if (preg_match('/^[a-zA-Z0-9\_]+$/', $k)) {
                         $v = [$k => $v];
-                        $k = sprintf('`%s` = :%s', $k, $k);
+                        $k = sprintf('%s = :%s', $this->quoteIdentifier($k), $k);
                     }
 
                     if (!empty($sql)) {
@@ -274,12 +304,24 @@ $deps['database'] = new class () {
             $prefixed = ':'.$key;
 
             if (is_array($value) && array_is_list($value)) {
-                // [1, 2], 'bar' => `bar` IN (1, 2)
+                // [], 'bar' => no rows, instead of an invalid `bar` IN ()
+                if (empty($value)) {
+                    return [
+                        'params' => [],
+                        'sql' => '1 = 0',
+                    ];
+                }
+
+                // [1, 2], 'bar' => `bar` IN (1, 2), a placeholder for each value
+                $params = [];
+
+                foreach (array_values($value) as $index => $item) {
+                    $params[$prefixed.'_'.$index] = $item;
+                }
+
                 return [
-                    'params' => [
-                        $prefixed => $value
-                    ],
-                    'sql' => sprintf('`%s` IN (%s)', $key, $prefixed),
+                    'params' => $params,
+                    'sql' => sprintf('%s IN (%s)', $this->quoteIdentifier($key), implode(', ', array_keys($params))),
                 ];
             }
 
@@ -288,7 +330,7 @@ $deps['database'] = new class () {
                 'params' => [
                     $prefixed => $value
                 ],
-                'sql' => sprintf('`%s` = %s', $key, $prefixed),
+                'sql' => sprintf('%s = %s', $this->quoteIdentifier($key), $prefixed),
             ];
         }
     }
