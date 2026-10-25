@@ -41,4 +41,4 @@ $mf('/', function () {
 ## Choosing crystal
 
 -   [[Comparison]] with Slim, Flight, Fat-Free, Leaf, Laravel, Symfony and Laminas/Mezzio
--   [[When to use crystal]]: good and bad fits, and how to use it on free hostings like InfinityFree
+-   [[When to use crystal]]: good and bad fits, and how to use it on InfinityFree and other free or limited hostings
