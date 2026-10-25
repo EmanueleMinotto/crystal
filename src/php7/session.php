@@ -56,6 +56,20 @@ $deps['session'] = new class () {
     }
 
     /**
+     * Whether the session would be new and empty: it's not active and the
+     * request has no session cookie, so reading it doesn't need to start it.
+     */
+    private function isNew(): bool
+    {
+        return PHP_SESSION_ACTIVE !== session_status()
+            && empty($this->memory)
+            && !empty($_SERVER['REQUEST_URI'])
+            && ini_get('session.use_cookies')
+            && ini_get('session.use_only_cookies')
+            && !isset($_COOKIE[session_name()]);
+    }
+
+    /**
      * Change the session identifier keeping its values, it prevents session fixation.
      */
     public function regenerate(): bool
@@ -65,6 +79,10 @@ $deps['session'] = new class () {
 
     public function get(string $key, $default = null)
     {
+        if ($this->isNew()) {
+            return $default;
+        }
+
         if (!$this->start()) {
             return $this->memory[$key] ?? $default;
         }
@@ -90,6 +108,10 @@ $deps['session'] = new class () {
 
     public function remove(string $key)
     {
+        if ($this->isNew()) {
+            return;
+        }
+
         if (!$this->start()) {
             unset($this->memory[$key]);
 

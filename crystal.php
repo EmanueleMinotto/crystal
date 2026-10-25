@@ -11,12 +11,11 @@ spl_autoload_register(function ($class) {
     // remove duplicated paths
     $paths = array_values(array_unique($paths));
 
-    // Realpaths and URLs
+    // Realpaths, paths not existing are skipped (they'd become the filesystem root)
+    $paths = array_filter(array_map('realpath', $paths));
+
     array_walk($paths, function (&$path) {
-        $path = rtrim(realpath($path), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
-    });
-    array_filter($paths, function ($path) {
-        return !is_null(trim($path, '/'.DIRECTORY_SEPARATOR));
+        $path = rtrim($path, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
     });
 
     // Use predefined extensions
@@ -1242,21 +1241,9 @@ return new class () {
 
                             public function get($key, $default = null)
                             {
-                                $file = $this->path($key);
+                                $data = $this->read($key);
 
-                                if (!file_exists($file)) {
-                                    return $default;
-                                }
-
-                                $data = unserialize(file_get_contents($file));
-
-                                if ($data['expires'] !== null && time() > $data['expires']) {
-                                    unlink($file);
-
-                                    return $default;
-                                }
-
-                                return $data['value'];
+                                return is_null($data) ? $default : $data['value'];
                             }
 
                             public function set($key, $value, $ttl = null)
@@ -1266,7 +1253,24 @@ return new class () {
                                     'expires' => ($ttl !== null && $ttl > 0) ? time() + $ttl : null,
                                 ]);
 
-                                return file_put_contents($this->path($key), $data) !== false;
+                                // written to a temporary file and renamed, so concurrent
+                                // requests never read a partially written file
+                                $temporary = tempnam($this->dir, 'tmp');
+
+                                if (false === $temporary) {
+                                    return false;
+                                }
+
+                                // tempnam() creates the file readable only by its owner
+                                @chmod($temporary, 0666 & ~umask());
+
+                                if (false === file_put_contents($temporary, $data) || !rename($temporary, $this->path($key))) {
+                                    @unlink($temporary);
+
+                                    return false;
+                                }
+
+                                return true;
                             }
 
                             public function delete($key)
@@ -1287,21 +1291,7 @@ return new class () {
 
                             public function has($key)
                             {
-                                $file = $this->path($key);
-
-                                if (!file_exists($file)) {
-                                    return false;
-                                }
-
-                                $data = unserialize(file_get_contents($file));
-
-                                if ($data['expires'] !== null && time() > $data['expires']) {
-                                    unlink($file);
-
-                                    return false;
-                                }
-
-                                return true;
+                                return !is_null($this->read($key));
                             }
 
                             public function clearPrefix($prefix)
@@ -1311,6 +1301,32 @@ return new class () {
                                 }
 
                                 return true;
+                            }
+
+                            /**
+                             * Stored value and expiration, null when missing, expired or unreadable.
+                             *
+                             * @return array|null
+                             */
+                            private function read($key)
+                            {
+                                $file = $this->path($key);
+
+                                // the file can be removed by a concurrent request
+                                $raw = file_exists($file) ? @file_get_contents($file) : false;
+                                $data = false === $raw ? false : @unserialize($raw);
+
+                                if (!is_array($data) || !array_key_exists('expires', $data)) {
+                                    return null;
+                                }
+
+                                if ($data['expires'] !== null && time() > $data['expires']) {
+                                    @unlink($file);
+
+                                    return null;
+                                }
+
+                                return $data;
                             }
 
                             private function path($key)
@@ -1914,7 +1930,8 @@ return new class () {
                 $success = true;
 
                 foreach ($values as $key => $value) {
-                    $success = $success && $this->set($key, $value, $ttl);
+                    // every value is stored, even after a failure
+                    $success = $this->set($key, $value, $ttl) && $success;
                 }
 
                 return $success;
@@ -1935,7 +1952,8 @@ return new class () {
                 $success = true;
 
                 foreach ($keys as $key) {
-                    $success = $success && $this->delete($key);
+                    // every key is deleted, even after a failure
+                    $success = $this->delete($key) && $success;
                 }
 
                 return $success;
@@ -2451,9 +2469,7 @@ return new class () {
 
                 foreach ($parameters as $parameter) {
                     $type = $parameter->getType();
-                    $type = method_exists($type, 'getName')
-                        ? $type->getName()
-                        : (string) $type;
+                    $type = is_null($type) ? '' : (method_exists($type, 'getName') ? $type->getName() : (string) $type);
 
                     $name = $parameter->name;
 
@@ -2463,14 +2479,15 @@ return new class () {
                         continue;
                     }
 
-                    if ($this->has($type) || class_exists($type)) {
+                    if ('' !== $type && ($this->has($type) || class_exists($type))) {
                         $resolvedParams[] = $this->make($type);
 
                         continue;
                     }
 
-                    if ($parameter->isOptional()) {
-                        $parameter->getDefaultValue();
+                    // the default value keeps the next arguments in their position
+                    if ($parameter->isDefaultValueAvailable()) {
+                        $resolvedParams[] = $parameter->getDefaultValue();
                     }
                 }
 
@@ -2883,11 +2900,19 @@ return new class () {
             private static $pdo;
 
             /**
+             * Name of the PDO driver, like "mysql" or "sqlite".
+             *
+             * @var string
+             */
+            private static $driver;
+
+            /**
              * Set a shared PDO connection.
              */
             public static function setPdo(PDO $pdo)
             {
                 static::$pdo = $pdo;
+                static::$driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
                 static::$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
                 static::$pdo->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
             }
@@ -2899,7 +2924,7 @@ return new class () {
              */
             public function quoteIdentifier(string $name): string
             {
-                switch (static::$pdo->getAttribute(PDO::ATTR_DRIVER_NAME)) {
+                switch (static::$driver) {
                     case 'mysql':
                         // SQLite reads unknown double quoted identifiers as strings
                     case 'sqlite':
@@ -2997,7 +3022,7 @@ return new class () {
                     implode(', :', $keys)
                 );
 
-                if ('pgsql' === static::$pdo->getAttribute(PDO::ATTR_DRIVER_NAME)) {
+                if ('pgsql' === static::$driver) {
                     // lastInsertId() fails without a sequence, aborting the current transaction
                     $rows = $this->query($sql.' RETURNING *', $values);
                     $lastInsertId = $rows[0]['id'] ?? false;
@@ -3021,7 +3046,7 @@ return new class () {
              */
             public function read(string $table, $where, $key = 'id')
             {
-                $where = $this->buildWhereCondition($where, $key);
+                $where = $this->where($where, $key);
                 $stmt = static::$pdo->prepare(sprintf(
                     'SELECT * FROM %s WHERE %s LIMIT 1',
                     $this->quoteIdentifier($table),
@@ -3037,22 +3062,32 @@ return new class () {
              */
             public function update(string $table, array $values, $where, $key = 'id')
             {
-                $params = $values;
-                $keys = array_keys($values);
+                $where = $this->where($where, $key);
+                // placeholders can't be mixed: positional for conditions with "?", named and prefixed
+                // otherwise, so they don't collide with the ones of the conditions
+                $positional = !empty($where['params']) && array_is_list($where['params']);
+                $set = [];
+                $params = [];
 
-                $set = join(', ', array_map(function ($key) {
-                    return sprintf('%s = :%s', $this->quoteIdentifier($key), $key);
-                }, $keys));
+                foreach ($values as $column => $value) {
+                    $placeholder = $positional ? '?' : ':set_'.$column;
+                    $set[] = sprintf('%s = %s', $this->quoteIdentifier($column), $placeholder);
 
-                $where = $this->buildWhereCondition($where, $key);
+                    if ($positional) {
+                        $params[] = $value;
+                    } else {
+                        $params[$placeholder] = $value;
+                    }
+                }
+
                 $stmt = static::$pdo->prepare(sprintf(
                     'UPDATE %s SET %s WHERE %s',
                     $this->quoteIdentifier($table),
-                    $set,
+                    implode(', ', $set),
                     $where['sql']
                 ));
 
-                return $stmt->execute(array_merge($where['params'], $params));
+                return $stmt->execute($positional ? array_merge($params, $where['params']) : $params + $where['params']);
             }
 
             /**
@@ -3060,7 +3095,7 @@ return new class () {
              */
             public function delete(string $table, $where, $key = 'id')
             {
-                $where = $this->buildWhereCondition($where, $key);
+                $where = $this->where($where, $key);
                 $stmt = static::$pdo->prepare(sprintf(
                     'DELETE FROM %s WHERE %s',
                     $this->quoteIdentifier($table),
@@ -3124,6 +3159,17 @@ return new class () {
 
                     throw $exception;
                 }
+            }
+
+            /**
+             * Conditions of read, update and delete: associative arrays are
+             * conditions like the ones of select, other values are matched by the key.
+             */
+            private function where($where, $key): array
+            {
+                return is_array($where) && !empty($where) && !array_is_list($where)
+                    ? $this->buildWhereCondition($where)
+                    : $this->buildWhereCondition($where, $key);
             }
 
             private function buildWhereCondition(): array
@@ -4105,7 +4151,7 @@ return new class () {
                 }
 
                 syslog(
-                    $this->logLevels[mb_strtolower($level)] ?? $level,
+                    $this->logLevels[strtolower($level)] ?? $level,
                     $message.' '.json_encode($context)
                 );
             }
@@ -5825,6 +5871,20 @@ return new class () {
             }
 
             /**
+             * Whether the session would be new and empty: it's not active and the
+             * request has no session cookie, so reading it doesn't need to start it.
+             */
+            private function isNew(): bool
+            {
+                return PHP_SESSION_ACTIVE !== session_status()
+                    && empty($this->memory)
+                    && !empty($_SERVER['REQUEST_URI'])
+                    && ini_get('session.use_cookies')
+                    && ini_get('session.use_only_cookies')
+                    && !isset($_COOKIE[session_name()]);
+            }
+
+            /**
              * Change the session identifier keeping its values, it prevents session fixation.
              */
             public function regenerate(): bool
@@ -5834,6 +5894,10 @@ return new class () {
 
             public function get(string $key, $default = null)
             {
+                if ($this->isNew()) {
+                    return $default;
+                }
+
                 if (!$this->start()) {
                     return $this->memory[$key] ?? $default;
                 }
@@ -5859,6 +5923,10 @@ return new class () {
 
             public function remove(string $key)
             {
+                if ($this->isNew()) {
+                    return;
+                }
+
                 if (!$this->start()) {
                     unset($this->memory[$key]);
 

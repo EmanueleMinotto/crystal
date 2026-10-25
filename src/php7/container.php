@@ -109,9 +109,7 @@ $deps['container'] = $deps['container'] ?? new class ($deps) {
 
         foreach ($parameters as $parameter) {
             $type = $parameter->getType();
-            $type = method_exists($type, 'getName')
-                ? $type->getName()
-                : (string) $type;
+            $type = is_null($type) ? '' : (method_exists($type, 'getName') ? $type->getName() : (string) $type);
 
             $name = $parameter->name;
 
@@ -121,14 +119,15 @@ $deps['container'] = $deps['container'] ?? new class ($deps) {
                 continue;
             }
 
-            if ($this->has($type) || class_exists($type)) {
+            if ('' !== $type && ($this->has($type) || class_exists($type))) {
                 $resolvedParams[] = $this->make($type);
 
                 continue;
             }
 
-            if ($parameter->isOptional()) {
-                $parameter->getDefaultValue();
+            // the default value keeps the next arguments in their position
+            if ($parameter->isDefaultValueAvailable()) {
+                $resolvedParams[] = $parameter->getDefaultValue();
             }
         }
 

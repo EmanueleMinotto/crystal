@@ -97,6 +97,11 @@ $mf(function () use ($mf) {
     $db->select('my_table', null, [1, 2, 3]);              // id IN (1, 2, 3)
     $db->delete('my_table', ['foo', 'bar'], 'name');       // name IN ('foo', 'bar')
     $db->delete('my_table', [], 'name');                   // an empty list matches no rows
+
+    // read, update or delete by conditions, like the ones of select
+    $db->read('my_table', ['email' => 'foo@example.com']);
+    $db->update('my_table', ['status' => 'active'], ['status' => 'pending']);
+    $db->delete('my_table', ['created_at < ?' => time() - 86400]);
 });
 ```
 

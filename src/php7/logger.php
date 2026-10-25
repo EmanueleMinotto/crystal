@@ -240,7 +240,7 @@ $deps['logger'] = new class () {
         }
 
         syslog(
-            $this->logLevels[mb_strtolower($level)] ?? $level,
+            $this->logLevels[strtolower($level)] ?? $level,
             $message.' '.json_encode($context)
         );
     }

@@ -11,12 +11,11 @@ spl_autoload_register(function ($class) {
     // remove duplicated paths
     $paths = array_values(array_unique($paths));
 
-    // Realpaths and URLs
+    // Realpaths, paths not existing are skipped (they'd become the filesystem root)
+    $paths = array_filter(array_map('realpath', $paths));
+
     array_walk($paths, function (&$path) {
-        $path = rtrim(realpath($path), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
-    });
-    array_filter($paths, function ($path) {
-        return !is_null(trim($path, '/'.DIRECTORY_SEPARATOR));
+        $path = rtrim($path, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
     });
 
     // Use predefined extensions
