@@ -97,6 +97,31 @@ Since the output is buffered, streaming large responses from a route isn't suppo
 
 Any object with a `send()` method can be returned as a response.
 
+## Returning arrays
+
+Arrays and [`JsonSerializable`](https://www.php.net/manual/en/class.jsonserializable.php) objects returned by a callback are JSON responses, like the ones of `$mf('response')->json()`:
+
+```php
+$mf->get('/api/users', function () {
+    return ['users' => ['Alice', 'Bob']];
+});
+```
+
+Like the other responses, they're sent by the router, they can be changed by [[Middleware]] and the next callbacks aren't invoked.
+Other values (like strings) are ignored.
+
+## Injected services
+
+Callbacks can receive the request, a new response and the other services as parameters with the same name, without `use ($mf)` (see [[CGI Usage]]):
+
+```php
+$mf->post('/api/users', function ($request, $response) {
+    $data = $request->validate(['name' => ['required', 'string']]);
+
+    return $response->json($data, 201);
+});
+```
+
 ## Middlewares
 
 Route callbacks can be wrapped by [[Middleware]].

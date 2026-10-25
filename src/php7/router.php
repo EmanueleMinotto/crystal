@@ -59,12 +59,78 @@ $deps['router'] = new class ($deps, $this) {
             throw new InvalidArgumentException(sprintf('Route "%s" already defined.', $name));
         }
 
-        $this->routes[$name] = $regex;
+        $this->routes[$name] = $this->compile($regex);
     }
 
     public function has(string $name): bool
     {
         return isset($this->routes[$name]);
+    }
+
+    /**
+     * Compile the placeholders of a route to named subpatterns: `{id}` matches
+     * a segment of the path (`[^/]+`), `{id:[0-9]+}` uses its own pattern.
+     *
+     * Quantifiers (like `{2}` or `{1,3}`) and escaped braces aren't placeholders.
+     */
+    public function compile(string $regex): string
+    {
+        if (false === strpos($regex, '{')) {
+            return $regex;
+        }
+
+        $compiled = '';
+        $length = strlen($regex);
+
+        for ($i = 0; $i < $length; ++$i) {
+            $char = $regex[$i];
+
+            if ('\\' === $char) {
+                $compiled .= substr($regex, $i, 2);
+                ++$i;
+
+                continue;
+            }
+
+            if ('{' !== $char || !preg_match('#\G\{([a-zA-Z_][a-zA-Z0-9_]*)([:}])#', $regex, $matches, 0, $i)) {
+                $compiled .= $char;
+
+                continue;
+            }
+
+            if ('}' === $matches[2]) {
+                $compiled .= '(?P<'.$matches[1].'>[^/]+)';
+                $i += strlen($matches[0]) - 1;
+
+                continue;
+            }
+
+            // the pattern ends at the brace closing the placeholder
+            $start = $i + strlen($matches[0]);
+            $depth = 1;
+
+            for ($end = $start; $end < $length; ++$end) {
+                if ('\\' === $regex[$end]) {
+                    ++$end;
+                } elseif ('{' === $regex[$end]) {
+                    ++$depth;
+                } elseif ('}' === $regex[$end] && 0 === --$depth) {
+                    break;
+                }
+            }
+
+            // not closed, it's left unchanged
+            if ($depth > 0) {
+                $compiled .= $char;
+
+                continue;
+            }
+
+            $compiled .= '(?P<'.$matches[1].'>'.substr($regex, $start, $end - $start).')';
+            $i = $end;
+        }
+
+        return $compiled;
     }
 
     /**
@@ -125,7 +191,8 @@ $deps['router'] = new class ($deps, $this) {
      * of the names and middlewares (the first one is the outermost).
      *
      * The callback receives an object with the same methods of the framework
-     * instance for routes (with the name as fifth argument), `route` and `group`.
+     * instance for routes (with the name as fifth argument), `get`, `post`,
+     * `put`, `patch`, `delete`, `route` and `group`.
      *
      * @param string     $prefix      Prefix of the regular expressions
      * @param callable   $define      Callback defining the routes
@@ -170,6 +237,31 @@ $deps['router'] = new class ($deps, $this) {
             public function route(string $name, string $regex, callable $callback, string $method = 'GET', $priority = 0)
             {
                 return $this($regex, $callback, $method, $priority, $name);
+            }
+
+            public function get(string $regex, callable $callback, $priority = 0, $name = null)
+            {
+                return $this($regex, $callback, 'GET', $priority, $name);
+            }
+
+            public function post(string $regex, callable $callback, $priority = 0, $name = null)
+            {
+                return $this($regex, $callback, 'POST', $priority, $name);
+            }
+
+            public function put(string $regex, callable $callback, $priority = 0, $name = null)
+            {
+                return $this($regex, $callback, 'PUT', $priority, $name);
+            }
+
+            public function patch(string $regex, callable $callback, $priority = 0, $name = null)
+            {
+                return $this($regex, $callback, 'PATCH', $priority, $name);
+            }
+
+            public function delete(string $regex, callable $callback, $priority = 0, $name = null)
+            {
+                return $this($regex, $callback, 'DELETE', $priority, $name);
             }
 
             /**

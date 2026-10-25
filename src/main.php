@@ -64,6 +64,51 @@ return new class () {
         ### PHP 7 FEATURES PLACEHOLDER ###
     }
 
+    /**
+     * Define a GET route, arguments are the same of the framework instance without the method.
+     *
+     * @param string   $regex    Regular expression used to match requested URL
+     * @param callable $callback Function invoked when there's a match
+     * @param float    $priority Set `$callback` priority from 0 (high) to ~1.8e308 (low)
+     * @param string   $name     Name of the route
+     */
+    public function get(string $regex, callable $callback, $priority = 0, $name = null)
+    {
+        return $this($regex, $callback, 'GET', $priority, $name);
+    }
+
+    /**
+     * Define a POST route, see `get()`.
+     */
+    public function post(string $regex, callable $callback, $priority = 0, $name = null)
+    {
+        return $this($regex, $callback, 'POST', $priority, $name);
+    }
+
+    /**
+     * Define a PUT route, see `get()`.
+     */
+    public function put(string $regex, callable $callback, $priority = 0, $name = null)
+    {
+        return $this($regex, $callback, 'PUT', $priority, $name);
+    }
+
+    /**
+     * Define a PATCH route, see `get()`.
+     */
+    public function patch(string $regex, callable $callback, $priority = 0, $name = null)
+    {
+        return $this($regex, $callback, 'PATCH', $priority, $name);
+    }
+
+    /**
+     * Define a DELETE route, see `get()`.
+     */
+    public function delete(string $regex, callable $callback, $priority = 0, $name = null)
+    {
+        return $this($regex, $callback, 'DELETE', $priority, $name);
+    }
+
     public function __invoke()
     {
         // local references used to keep the function body unchanged
@@ -132,6 +177,11 @@ return new class () {
                 break;
         }
 
+        // placeholders like {id} and {id:[0-9]+} are compiled to named subpatterns
+        if (func_num_args() >= 2 && is_string($args[0]) && is_object($deps['router'] ?? null) && method_exists($deps['router'], 'compile')) {
+            $args[0] = $deps['router']->compile($args[0]);
+        }
+
         // routes can be named using the fifth argument
         if (func_num_args() >= 5 && is_string($args[0]) && !is_null($args[4])) {
             $deps['router']->name($args[4], $args[0]);
@@ -183,18 +233,121 @@ return new class () {
         }
 
         /**
+         * Function completing the arguments of a route callback.
+         *
+         * Parameters without a value from the requested URL receive the service
+         * with the same name (like `$request`) or, for classes, an instance made
+         * by the container. Route values that PHP can't pass to `int`, `float`,
+         * `string` and `bool` parameters (like empty optional subpatterns) are
+         * replaced by the default value, or answered with a 404 by the errors service.
+         *
+         * @param array $args       Arguments from the requested URL
+         * @param array $parameters Parameters of the callback, see the router
+         *
+         * @return array
+         */
+        $arguments = function (array $args, array $parameters) use (&$deps) {
+            $container = $deps['container'] ?? null;
+            $container = is_object($container) && method_exists($container, 'has') && method_exists($container, 'get') ? $container : null;
+
+            // services and objects set with a name, settings aren't injected
+            $service = function (string $name) use (&$deps, $container) {
+                if (array_key_exists($name, $deps)) {
+                    $value = $deps[$name];
+
+                    // only factories without arguments are invoked
+                    if ($value instanceof Closure) {
+                        if ((new ReflectionFunction($value))->getNumberOfRequiredParameters() > 0) {
+                            return null;
+                        }
+                    } elseif (!is_object($value) || is_callable($value)) {
+                        return null;
+                    }
+                } elseif (is_null($container) || !$container->has($name)) {
+                    return null;
+                }
+
+                if (!is_null($container)) {
+                    $value = $container->get($name);
+                } elseif ($value instanceof Closure) {
+                    $value = $value();
+                }
+
+                return is_object($value) ? $value : null;
+            };
+
+            foreach ($parameters as $position => $parameter) {
+                if ($parameter['variadic']) {
+                    break;
+                }
+
+                $exists = array_key_exists($position, $args);
+
+                if ($parameter['route'] && $exists) {
+                    $value = $args[$position];
+
+                    if (is_null($value) && ($parameter['nullable'] || '' === $parameter['type'])) {
+                        continue;
+                    }
+
+                    $invalid = is_null($value)
+                        || (in_array($parameter['type'], ['int', 'float'], true) && is_string($value) && !is_numeric($value));
+
+                    if (!$invalid) {
+                        continue;
+                    }
+
+                    if (('' === $value || is_null($value)) && $parameter['optional']) {
+                        $args[$position] = $parameter['default'];
+                    } elseif ('' === $value && $parameter['nullable']) {
+                        $args[$position] = null;
+                    } elseif (is_object($deps['errors'] ?? null) && method_exists($deps['errors'], 'isEnabled') && $deps['errors']->isEnabled()) {
+                        $deps['errors']->abort(404);
+                    }
+
+                    continue;
+                }
+
+                if ($exists && !is_null($args[$position])) {
+                    continue;
+                }
+
+                $value = $service($parameter['name']);
+
+                if (is_null($value) && '' !== $parameter['class'] && !is_null($container) && method_exists($container, 'make')) {
+                    if ($container->has($parameter['class']) || class_exists($parameter['class'])) {
+                        $value = $container->make($parameter['class']);
+                    }
+                }
+
+                if (!is_null($value)) {
+                    $args[$position] = $value;
+                } elseif (!$exists && $parameter['optional']) {
+                    // the next parameters can still be injected
+                    $args[$position] = $parameter['default'];
+                } elseif (!$exists) {
+                    break;
+                }
+            }
+
+            return $args;
+        };
+
+        /**
          * Function invoking route callbacks.
          *
          * The route parameters are exposed by the request service, the first
          * response returned by a callback is sent and the next callbacks are skipped.
+         * Arrays and JsonSerializable objects returned by a callback are sent as JSON responses.
          *
-         * @param callback $cb     Route callback
-         * @param array    $args   Arguments of the callback
-         * @param array    $params Named route parameters
+         * @param callback $cb         Route callback
+         * @param array    $args       Arguments of the callback
+         * @param array    $params     Named route parameters
+         * @param array    $parameters Parameters of the callback
          *
          * @return void
          */
-        $dispatch = function ($cb, array $args, array $params) use (&$deps, &$responded) {
+        $dispatch = function ($cb, array $args, array $params, array $parameters = []) use (&$deps, &$responded, $arguments) {
             // the output of all the callbacks is buffered until the end of
             // the script, so a response can set status and headers after it
             static $level = null;
@@ -216,7 +369,12 @@ return new class () {
             ob_start();
 
             try {
-                $result = call_user_func_array($cb, $args);
+                $result = call_user_func_array($cb, $arguments($args, $parameters));
+
+                if ((is_array($result) || $result instanceof JsonSerializable) && !empty($deps['response'])) {
+                    $response = is_callable($deps['response']) ? call_user_func($deps['response']) : $deps['response'];
+                    $result = $response->json($result);
+                }
             } catch (Throwable $exception) {
                 if (!is_object($errors) || !method_exists($errors, 'isEnabled') || !$errors->isEnabled()) {
                     ob_end_flush();
@@ -361,19 +519,27 @@ return new class () {
                 // Named subpatterns are allowed
                 // http://it2.php.net/manual/en/regexp.reference.subpatterns.php
                 $named = [];
+                $values = [];
+                $skip = false;
 
-                foreach ($submatches as $key => $value) {
-                    if (is_string($key)) {
-                        $named[$key] = $value;
-                    }
-                }
-
-                $submatches = array_unique($submatches);
                 // If matches is provided, then it is filled with the results of search.
                 // $submatches[0] will contain the text that matched the full pattern,
                 // $submatches[1] will have the text that matched the first captured parenthesized
-                // subpattern, and so on.
-                unset($submatches[0]);
+                // subpattern, and so on: the value of a named subpattern is listed
+                // with its name and then with its number.
+                foreach ($submatches as $key => $value) {
+                    if (is_string($key)) {
+                        $named[$key] = $value;
+                        $values[$key] = $value;
+                        $skip = true;
+                    } elseif ($skip || 0 === $key) {
+                        $skip = false;
+                    } else {
+                        $values[] = $value;
+                    }
+                }
+
+                $submatches = $values;
 
                 // Wrappers (like protected routes) expose the wrapped callback,
                 // so its parameters can be used for named subpatterns.
@@ -399,18 +565,45 @@ return new class () {
                 }
 
                 // user can use named parameters only if explicitly requested
-                if (array_intersect(array_keys($params), array_keys($submatches))) {
+                $byName = (bool) array_intersect(array_keys($params), array_keys($submatches));
+
+                if ($byName) {
                     $submatches = array_merge($params, $submatches);
+                }
+
+                $values = array_values($submatches);
+
+                // parameters of the callback, used to convert the route values
+                // and to inject the services when invoking it
+                $parameters = [];
+
+                foreach ($reflector->getParameters() as $position => $parameter) {
+                    $type = $parameter->getType();
+                    $typeName = is_null($type) ? '' : (method_exists($type, 'getName') ? $type->getName() : (string) $type);
+                    $builtin = !is_null($type) && method_exists($type, 'isBuiltin') && $type->isBuiltin();
+                    $optional = $parameter->isOptional() && $parameter->isDefaultValueAvailable();
+
+                    $parameters[] = [
+                        'name' => $parameter->name,
+                        // whether the value comes from the requested URL
+                        'route' => $byName ? array_key_exists($parameter->name, $named) : $position < count($values),
+                        'type' => $builtin ? $typeName : '',
+                        'class' => (is_null($type) || $builtin) ? '' : $typeName,
+                        'nullable' => is_null($type) || $type->allowsNull(),
+                        'optional' => $optional,
+                        'default' => $optional ? $parameter->getDefaultValue() : null,
+                        'variadic' => $parameter->isVariadic(),
+                    ];
                 }
 
                 // register_shutdown_function is used to call added functions when script ends
                 // http://it2.php.net/manual/en/function.register-shutdown-function.php
-                return register_shutdown_function($dispatch, $cb, array_values($submatches), $named);
+                return register_shutdown_function($dispatch, $cb, $values, $named, $parameters);
             }
         };
 
         // invoking deploy
         invoke_deploy:
-        return call_user_func_array($deploy, func_get_args());
+        return call_user_func_array($deploy, $args);
     }
 };

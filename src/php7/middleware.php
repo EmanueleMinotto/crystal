@@ -75,6 +75,11 @@ $deps['middleware'] = new class ($deps) {
 
                     $output = ob_get_clean();
 
+                    // arrays are JSON responses, like for the router
+                    if (is_array($result) || $result instanceof JsonSerializable) {
+                        $result = $this->service('response')->json($result);
+                    }
+
                     if (is_object($result) && method_exists($result, 'send')) {
                         if ('' !== $output && method_exists($result, 'body') && method_exists($result, 'setBody')) {
                             $result->setBody($output.$result->body());
