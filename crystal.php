@@ -2734,7 +2734,17 @@ return new class () {
 
                 $this->query($sql, $values);
 
-                $lastInsertId = static::$pdo->lastInsertId();
+                try {
+                    $lastInsertId = static::$pdo->lastInsertId();
+                } catch (PDOException $exception) {
+                    // PostgreSQL fails when the table has no sequence
+                    $lastInsertId = false;
+                }
+
+                // without auto increment (MySQL returns "0") the inserted id is used
+                if (empty($lastInsertId) && isset($values['id'])) {
+                    $lastInsertId = $values['id'];
+                }
 
                 return is_numeric($lastInsertId)
                     ? (int) $lastInsertId

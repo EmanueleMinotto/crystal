@@ -19,9 +19,13 @@ return function ($mf, PDO $pdo) {
         $db->quoteIdentifier('group')
     ));
 
+    $created = [];
+
     for ($i = 1; $i < 4; $i++) {
-        $db->create('order', ['id' => $i, 'group' => 'g'.$i]);
+        $created[] = $db->create('order', ['id' => $i, 'group' => 'g'.$i]);
     }
+
+    echo 'create: '.json_encode($created)."\n";
 
     echo 'select by column: '.json_encode($db->select('order', ['id', 'group'], ['group' => 'g2']))."\n";
     echo 'select in: '.json_encode($db->select('order', 'id', [1, 3], 'id'))."\n";
