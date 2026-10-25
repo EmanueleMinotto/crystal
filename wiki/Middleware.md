@@ -57,8 +57,9 @@ When a middleware returns another response (like `$maintenance` above), it's the
 $auth->middleware();             // 401 for guests
 $auth->middleware('post:edit');  // 403 when the gate denies, the gate receives the user and the request
 $csrf->middleware();             // 403 for invalid CSRF tokens
+$limiter->middleware(60, 60);    // 429 after 60 requests per minute for each IP address
 
 $mf('/posts/(?P<id>[0-9]+)', $middleware->wrap($update, $csrf->middleware(), $auth->middleware('post:edit')), 'POST');
 ```
 
-See [[Authentication]] and [[CSRF]].
+See [[Authentication]], [[CSRF]] and [[Rate Limiting]].

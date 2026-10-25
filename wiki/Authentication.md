@@ -83,6 +83,7 @@ if (!$auth->attempt($_POST['email'], $_POST['password'])) {
 ```
 
 While locked even valid credentials are refused, a successful login resets the attempts.
+To limit other requests, like the ones of an API, see [[Rate Limiting]].
 
 ## Remember me
 
