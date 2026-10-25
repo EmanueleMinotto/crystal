@@ -46,7 +46,8 @@ jobs:
             - run: "composer install"
             - run: "composer test"
 
-    # databases and cache servers, APCu is disabled to test the fallback
+    # databases and cache servers, APCu isn't enabled in the CLI to test the fallback
+    # (it can't be removed: the redis and memcached extensions depend on it)
     services:
         runs-on: ubuntu-latest
         services:
@@ -83,7 +84,7 @@ jobs:
                 ports:
                     - 11211:11211
 
-        name: MySQL, PostgreSQL, Redis, Memcached, without APCu
+        name: MySQL, PostgreSQL, Redis, Memcached, APCu disabled
         steps:
             - uses: actions/checkout@v4
 
@@ -91,7 +92,7 @@ jobs:
               with:
                   php-version: "8.4"
                   coverage: none
-                  extensions: pdo_mysql, pdo_pgsql, redis, memcached, :apcu
+                  extensions: pdo_mysql, pdo_pgsql, redis, memcached
 
             - run: "composer install"
             - run: "composer test"
