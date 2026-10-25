@@ -3304,6 +3304,16 @@ return new class () {
             private $sent = false;
 
             /**
+             * Options, see `enable()`.
+             *
+             * @var array
+             */
+            private $options = [
+                'json' => null,
+                'problem' => false,
+            ];
+
+            /**
              * Custom renderer, receives status, exception (or null) and request, returns a response.
              *
              * @var callable|null
@@ -3352,11 +3362,29 @@ return new class () {
             /**
              * Enable the error handling.
              *
-             * @param bool $debug Show the exceptions details, never enable it in production
+             * Options:
+             * - json: regular expression of the paths always answered in JSON (like `/api/.*`),
+             *   relative to the base path like the routes, the other ones are JSON when requested
+             * - problem: JSON responses are Problem Details (RFC 9457), with the
+             *   `application/problem+json` content type
+             *
+             * @param bool  $debug   Show the exceptions details, never enable it in production
+             * @param array $options Options
+             *
+             * @link https://www.rfc-editor.org/rfc/rfc9457
+             *
+             * @throws InvalidArgumentException For unknown options
              */
-            public function enable(bool $debug = false)
+            public function enable(bool $debug = false, array $options = [])
             {
+                $unknown = array_diff_key($options, $this->options);
+
+                if (!empty($unknown)) {
+                    throw new InvalidArgumentException(sprintf('Unknown errors options: %s.', implode(', ', array_keys($unknown))));
+                }
+
                 $this->debug = $debug;
+                $this->options = $options + $this->options;
 
                 if ($this->enabled) {
                     return;
@@ -3512,7 +3540,8 @@ return new class () {
             }
 
             /**
-             * Render an error response, JSON when requested by the client, HTML otherwise.
+             * Render an error response, JSON when requested by the client
+             * or for the paths of the `json` option, HTML otherwise.
              *
              * @param int            $status
              * @param Throwable|null $exception
@@ -3546,9 +3575,31 @@ return new class () {
                 $fields = !is_null($exception) && method_exists($exception, 'getErrors') ? (array) $exception->getErrors() : [];
 
                 $response = $this->service('response')->setStatus($status);
-                $accept = (string) $request->header('Accept', '');
 
-                if (false !== stripos($accept, 'json') || $request->isJson()) {
+                if ($this->wantsJson($request)) {
+                    if ($this->options['problem']) {
+                        $problem = ['type' => 'about:blank', 'title' => $title, 'status' => $status];
+
+                        if ('' !== $message) {
+                            $problem['detail'] = $message;
+                        }
+
+                        // extension members
+                        if (!empty($fields)) {
+                            $problem['errors'] = $fields;
+                        }
+
+                        if ($this->debug && !is_null($exception)) {
+                            $problem['exception'] = get_class($exception);
+                            $problem['file'] = $exception->getFile().':'.$exception->getLine();
+                            $problem['trace'] = explode("\n", $exception->getTraceAsString());
+                        }
+
+                        return $response
+                            ->json($problem)
+                            ->setHeader('Content-Type', 'application/problem+json');
+                    }
+
                     $error = ['status' => $status, 'title' => $title];
 
                     if ('' !== $message) {
@@ -3606,6 +3657,26 @@ return new class () {
                         $e($title),
                         $details
                     ));
+            }
+
+            /**
+             * Whether the error response of the request is JSON.
+             *
+             * @param object $request
+             */
+            private function wantsJson($request): bool
+            {
+                if (false !== stripos((string) $request->header('Accept', ''), 'json') || $request->isJson()) {
+                    return true;
+                }
+
+                if (is_null($this->options['json'])) {
+                    return false;
+                }
+
+                $base = empty($_SERVER['REQUEST_URI']) ? '' : quotemeta(rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\'));
+
+                return (bool) preg_match('#^'.$base.$this->options['json'].'$#', $request->path());
             }
 
             /**
@@ -5259,6 +5330,8 @@ return new class () {
 
             /**
              * Body values, from a form or from a JSON object, all of them without a key.
+             *
+             * @throws RuntimeException With status code 400, when the JSON body is malformed and the errors handling is enabled
              */
             public function input($key = null, $default = null)
             {
@@ -5266,7 +5339,17 @@ return new class () {
 
                 if ($this->isJson()) {
                     $input = $this->json();
-                    $input = is_array($input) ? $input : [];
+
+                    if (!is_array($input)) {
+                        $errors = $this->deps['errors'] ?? null;
+
+                        // without the errors handling malformed bodies are empty, like before it
+                        if (is_object($errors) && method_exists($errors, 'isEnabled') && $errors->isEnabled()) {
+                            $this->checkJson();
+                        }
+
+                        $input = [];
+                    }
                 }
 
                 return is_null($key) ? $input : ($input[$key] ?? $default);
@@ -5278,10 +5361,13 @@ return new class () {
              * @param array $rules    Rules of each field, see the validator service
              * @param array $messages Custom messages, keys are "field.rule" or "rule"
              *
-             * @throws RuntimeException With status code 422 and the `getErrors` method, when the data isn't valid
+             * @throws RuntimeException With status code 422 and the `getErrors` method, when the data isn't valid,
+             *                          with status code 400 when the JSON body is malformed
              */
             public function validate(array $rules, array $messages = []): array
             {
+                $this->checkJson();
+
                 $validator = $this->deps['validator'];
                 $validator = is_callable($validator) ? call_user_func($validator) : $validator;
 
@@ -5294,6 +5380,21 @@ return new class () {
             public function isJson(): bool
             {
                 return false !== stripos((string) $this->header('Content-Type', ''), 'json');
+            }
+
+            /**
+             * Whether the body is JSON according to the Content-Type header, but it can't be decoded.
+             * Empty bodies aren't malformed.
+             */
+            public function isMalformedJson(): bool
+            {
+                if (!$this->isJson() || '' === trim($this->body())) {
+                    return false;
+                }
+
+                json_decode($this->body());
+
+                return JSON_ERROR_NONE !== json_last_error();
             }
 
             /**
@@ -5386,6 +5487,28 @@ return new class () {
             public function setAttribute(string $name, $value)
             {
                 $this->attributes[$name] = $value;
+            }
+
+            /**
+             * Stop the request with a 400 response when the JSON body is malformed.
+             *
+             * @throws RuntimeException With status code 400
+             */
+            private function checkJson()
+            {
+                if (!$this->isMalformedJson()) {
+                    return;
+                }
+
+                $message = 'Malformed JSON body: '.json_last_error_msg().'.';
+                $errors = $this->deps['errors'] ?? null;
+                $errors = is_callable($errors) ? call_user_func($errors) : $errors;
+
+                if (is_object($errors) && method_exists($errors, 'abort')) {
+                    $errors->abort(400, $message);
+                }
+
+                throw new UnexpectedValueException($message);
             }
         };
 

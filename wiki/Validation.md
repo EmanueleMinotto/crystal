@@ -31,7 +31,7 @@ $mf('/api/users', function () use ($mf) {
 }, 'POST');
 ```
 
-It's the same as `$mf('validator')->validate(array_replace($request->query(), $request->input()), $rules, $messages)`.
+It's the same as `$mf('validator')->validate(array_replace($request->query(), $request->input()), $rules, $messages)`, but a malformed JSON body throws an exception with status code 400 (a 400 response with the [[Errors]] handling enabled) instead of being validated as an empty body.
 
 ## Results
 
