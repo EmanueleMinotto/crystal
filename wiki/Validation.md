@@ -111,4 +111,39 @@ $mf('validator')->validate($data, $rules, [
 
 Placeholders: `:field` (underscores become spaces), `:param` (the rule parameter), `:min` and `:max` (for `between`).
 
-Nested fields (like `address.city`) aren't supported yet.
+Messages of nested fields can use the pattern (`items.*.sku.required`) or the path of an item (`items.0.sku.required`).
+
+## Nested fields
+
+Dots select the keys of arrays (like a JSON body), `*` each item of an array:
+
+```php
+$data = $mf('request')->validate([
+    'address.city' => ['required', 'string'],
+    'items' => ['required', 'array'],
+    'items.*.sku' => ['required', 'string'],
+    'items.*.quantity' => ['integer', 'min' => 1],
+]);
+```
+
+-   errors use the path of each item: `items.1.quantity`
+-   `*` on a missing array or on a value that isn't an array checks nothing, so add rules to the array itself (`'items' => ['required', 'array']`)
+-   the validated data keeps the structure: `['address' => ['city' => 'Rome'], 'items' => [...]]`, with only the validated keys of nested arrays (unless the array has rules too)
+-   keys containing dots are still fields: when the data has a `tags.main` key, it's validated as a single field
+
+## Types of the validated values
+
+Values from forms and query strings are strings, `castTypes()` converts the validated values of `integer`, `numeric` and `boolean` fields:
+
+```php
+$mf('validator')->castTypes();
+
+$mf('validator')->validate(['age' => '30', 'price' => '9.90', 'active' => 'false'], [
+    'age' => ['integer'],
+    'price' => ['numeric'],
+    'active' => ['boolean'],
+]);
+// ['age' => 30, 'price' => 9.9, 'active' => false]
+```
+
+Empty values aren't converted. The conversion is disabled by default and it applies to `request->validate()` too.

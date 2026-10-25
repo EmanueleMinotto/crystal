@@ -32,8 +32,8 @@ $mf('/', function () {
 -   a [[Configuration]] system with `.env` files support
 -   an [[Event Listener]] to listen and dispatch events
 -   [[Authentication]] with password hashing, protected routes, gates, throttling, remember-me and API tokens
--   [[Request Response]] objects and [[Middleware]]
--   [[Validation]] of the input data
+-   [[Request Response]] objects (with `201`, `202`, `204` helpers and `ETag` with 304 responses) and [[Middleware]]
+-   [[Validation]] of the input data, nested fields included
 -   [[Errors]] handling with error pages, 404 and 405 responses
 -   [[CORS]] headers and automatic `OPTIONS` (preflight) responses
 -   [[Rate Limiting]] of routes and actions, with 429 responses

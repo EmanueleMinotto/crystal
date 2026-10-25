@@ -5390,13 +5390,36 @@ return new class () {
          * Status, headers and cookies are sent only by `send`, so they can be
          * changed at any time. Route callbacks can return a response, it's sent
          * by the router.
+         *
+         * The `json_flags` setting contains the default flags of `json_encode()`.
          */
-        $deps['response'] = function () {
-            return new class () {
+        $deps['response'] = function () use (&$deps) {
+            return new class ($deps) {
+                /**
+                 * Dynamic set of dependencies, used to retrieve the settings.
+                 *
+                 * @var array
+                 */
+                private $deps;
+
                 /**
                  * @var int
                  */
                 private $status = 200;
+
+                /**
+                 * Entity tag, true when it's the hash of the body.
+                 *
+                 * @var string|bool|null
+                 */
+                private $etag;
+
+                /**
+                 * Whether the entity tag is weak.
+                 *
+                 * @var bool
+                 */
+                private $weak = false;
 
                 /**
                  * Headers, lowercase name => [name, value].
@@ -5416,6 +5439,14 @@ return new class () {
                  * @var string
                  */
                 private $body = '';
+
+                /**
+                 * @param array $deps Dynamic set of dependencies.
+                 */
+                public function __construct(array &$deps = [])
+                {
+                    $this->deps = &$deps;
+                }
 
                 public function status(): int
                 {
@@ -5528,12 +5559,20 @@ return new class () {
                  *
                  * @param mixed    $data   Data to encode
                  * @param int|null $status Status code, unchanged when null
+                 * @param int|null $flags  Flags of json_encode(), the `json_flags` setting (or 0) when null
+                 *
+                 * @link https://www.php.net/manual/en/json.constants.php
                  */
-                public function json($data, $status = null)
+                public function json($data, $status = null, $flags = null)
                 {
                     assert(is_null($status) || is_int($status));
+                    assert(is_null($flags) || is_int($flags));
 
-                    $json = json_encode($data);
+                    if (is_null($flags)) {
+                        $flags = is_int($this->deps['json_flags'] ?? null) ? $this->deps['json_flags'] : 0;
+                    }
+
+                    $json = json_encode($data, $flags);
 
                     if (false === $json) {
                         throw new InvalidArgumentException('Unable to encode the JSON body: '.json_last_error_msg());
@@ -5546,6 +5585,105 @@ return new class () {
                     $this->setHeader('Content-Type', 'application/json');
 
                     return $this->setBody($json);
+                }
+
+                /**
+                 * 201 response, with the `Location` header of the created resource and its JSON representation.
+                 *
+                 * @param mixed  $data     Data to encode, the body is empty when null
+                 * @param string $location URL of the created resource
+                 */
+                public function created($data = null, string $location = '')
+                {
+                    if ('' !== $location) {
+                        $this->setHeader('Location', $location);
+                    }
+
+                    return is_null($data) ? $this->setStatus(201) : $this->json($data, 201);
+                }
+
+                /**
+                 * 202 response, the request will be processed later.
+                 *
+                 * @param mixed $data Data to encode, the body is empty when null
+                 */
+                public function accepted($data = null)
+                {
+                    return is_null($data) ? $this->setStatus(202) : $this->json($data, 202);
+                }
+
+                /**
+                 * 204 response, without body.
+                 */
+                public function noContent()
+                {
+                    $this->removeHeader('Content-Type');
+
+                    return $this->setStatus(204)->setBody('');
+                }
+
+                /**
+                 * Set the entity tag (`ETag` header), GET and HEAD requests with a matching
+                 * `If-None-Match` header receive a 304 response without body.
+                 *
+                 * @param string|null $etag Entity tag without quotes, the hash of the body when it's sent when null
+                 * @param bool        $weak Whether the tag is weak (`W/` prefix)
+                 */
+                public function setEtag($etag = null, bool $weak = false)
+                {
+                    assert(is_null($etag) || is_string($etag));
+
+                    $this->etag = is_null($etag) ? true : $etag;
+                    $this->weak = $weak;
+
+                    return $this;
+                }
+
+                /**
+                 * Entity tag, as sent in the `ETag` header, null when not set.
+                 *
+                 * @return string|null
+                 */
+                public function etag()
+                {
+                    if (is_null($this->etag)) {
+                        return null;
+                    }
+
+                    $etag = true === $this->etag ? sha1($this->body) : $this->etag;
+
+                    return ($this->weak ? 'W/' : '').'"'.str_replace('"', '', $etag).'"';
+                }
+
+                /**
+                 * Whether the client already has this response: the status is 2xx, the request
+                 * is GET or HEAD and its `If-None-Match` header matches the entity tag (weak comparison).
+                 */
+                public function isNotModified(): bool
+                {
+                    $etag = $this->etag();
+                    $header = $_SERVER['HTTP_IF_NONE_MATCH'] ?? null;
+
+                    // only successful responses can be replaced by a 304
+                    if (is_null($etag) || is_null($header) || $this->status < 200 || $this->status > 299) {
+                        return false;
+                    }
+
+                    if (!in_array(strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET'), ['GET', 'HEAD'], true)) {
+                        return false;
+                    }
+
+                    if ('*' === trim($header)) {
+                        return true;
+                    }
+
+                    $strip = function ($tag) {
+                        $tag = trim($tag);
+
+                        return 0 === strpos($tag, 'W/') ? substr($tag, 2) : $tag;
+                    };
+
+                    return in_array($strip($etag), array_map($strip, explode(',', $header)), true);
                 }
 
                 /**
@@ -5563,6 +5701,18 @@ return new class () {
                  */
                 public function send()
                 {
+                    if (!is_null($this->etag)) {
+                        $notModified = $this->isNotModified();
+                        $this->setHeader('ETag', $this->etag());
+
+                        if ($notModified) {
+                            // headers describing the body aren't sent
+                            $this->status = 304;
+                            $this->body = '';
+                            $this->removeHeader('Content-Type')->removeHeader('Content-Length');
+                        }
+                    }
+
                     http_response_code($this->status);
 
                     foreach ($this->headers as $header) {
@@ -6238,6 +6388,9 @@ return new class () {
          *         'code' => [function ($value, $field, $data) { return ctype_alnum($value) ?: 'must be alphanumeric'; }],
          *     ]
          *
+         * Nested fields use dots and `*` for each item of an array, like `address.city`
+         * and `items.*.quantity`, errors are listed with the path of each item (`items.0.quantity`).
+         *
          * Empty fields (missing, null, empty strings or arrays) are valid unless required.
          */
         $deps['validator'] = new class () {
@@ -6247,6 +6400,13 @@ return new class () {
              * @var array
              */
             private $rules = [];
+
+            /**
+             * Whether the validated values of `integer`, `numeric` and `boolean` fields are converted.
+             *
+             * @var bool
+             */
+            private $cast = false;
 
             /**
              * Default messages, :field is replaced by the field name, :param by the rule parameter.
@@ -6287,6 +6447,15 @@ return new class () {
             }
 
             /**
+             * Convert the validated values of `integer`, `numeric` and `boolean` fields
+             * to int, int or float and bool, like `"42"` to `42`.
+             */
+            public function castTypes(bool $cast = true)
+            {
+                $this->cast = $cast;
+            }
+
+            /**
              * Validate the data, returning the validated fields.
              *
              * @param array $data     Data to validate
@@ -6324,7 +6493,41 @@ return new class () {
                     };
                 }
 
-                return array_intersect_key($data, $rules);
+                $validated = array_intersect_key($data, $rules);
+
+                foreach ($validated as $field => $value) {
+                    $validated[$field] = $this->cast($value, $rules[$field]);
+                }
+
+                foreach ($rules as $field => $fieldRules) {
+                    if (array_key_exists($field, $data)) {
+                        continue;
+                    }
+
+                    foreach ($this->expand((string) $field, $data) as $item) {
+                        list($path, $value, $exists) = $item;
+
+                        if (!$exists || 1 === count($path)) {
+                            continue;
+                        }
+
+                        // nested values
+                        $target = &$validated;
+
+                        foreach ($path as $key) {
+                            if (!isset($target[$key]) || !is_array($target[$key])) {
+                                $target[$key] = [];
+                            }
+
+                            $target = &$target[$key];
+                        }
+
+                        $target = $this->cast($value, $fieldRules);
+                        unset($target);
+                    }
+                }
+
+                return $validated;
             }
 
             /**
@@ -6345,56 +6548,162 @@ return new class () {
                         throw new InvalidArgumentException(sprintf('Rules of the "%s" field must be an array.', $field));
                     }
 
-                    $value = $data[$field] ?? null;
-                    $empty = is_null($value) || '' === $value || [] === $value;
+                    foreach ($this->expand((string) $field, $data) as $item) {
+                        $path = implode('.', $item[0]);
+                        $fieldErrors = $this->checkField($path, $item[1], $fieldRules, $data, $messages, (string) $field);
 
-                    if ($empty) {
-                        if (in_array('required', $fieldRules, true)) {
-                            $errors[$field][] = $this->message('required', null, $field, $messages);
-                        }
-
-                        continue;
-                    }
-
-                    // sizes are numeric for numeric fields
-                    $numeric = in_array('integer', $fieldRules, true) || in_array('numeric', $fieldRules, true);
-
-                    foreach ($fieldRules as $key => $rule) {
-                        if (is_string($key)) {
-                            $name = $key;
-                            $param = $rule;
-                        } elseif (is_string($rule)) {
-                            $name = $rule;
-                            $param = null;
-                        } elseif (is_callable($rule)) {
-                            $result = call_user_func($rule, $value, $field, $data);
-
-                            if (true !== $result) {
-                                $errors[$field][] = is_string($result)
-                                    ? $this->replace($result, $field, null)
-                                    : $this->message('custom', null, $field, $messages);
-                            }
-
-                            continue;
-                        } else {
-                            throw new InvalidArgumentException(sprintf('Invalid rule for the "%s" field.', $field));
-                        }
-
-                        if ('required' === $name) {
-                            continue;
-                        }
-
-                        $result = $this->apply($name, $param, $value, $field, $data, $numeric);
-
-                        if (true !== $result) {
-                            $errors[$field][] = is_string($result)
-                                ? $this->replace($result, $field, $param)
-                                : $this->message($name, $param, $field, $messages);
+                        if (!empty($fieldErrors)) {
+                            $errors[$path] = $fieldErrors;
                         }
                     }
                 }
 
                 return $errors;
+            }
+
+            /**
+             * Error messages of a field.
+             *
+             * @param string $field      Field name, or path of a nested field
+             * @param mixed  $value      Value of the field
+             * @param array  $fieldRules Rules of the field
+             * @param array  $data       Data to validate
+             * @param array  $messages   Custom messages
+             * @param string $pattern    Field name in the rules, like `items.*.quantity`
+             *
+             * @return string[]
+             */
+            private function checkField(string $field, $value, array $fieldRules, array $data, array $messages, string $pattern): array
+            {
+                $errors = [];
+
+                // custom messages of nested fields can use the path or the pattern
+                if ($pattern !== $field) {
+                    foreach ($messages as $key => $message) {
+                        $key = (string) $key;
+                        $concrete = $field.substr($key, strlen($pattern));
+
+                        if (0 === strpos($key, $pattern.'.') && !isset($messages[$concrete])) {
+                            $messages[$concrete] = $message;
+                        }
+                    }
+                }
+
+                $empty = is_null($value) || '' === $value || [] === $value;
+
+                if ($empty) {
+                    if (in_array('required', $fieldRules, true)) {
+                        $errors[] = $this->message('required', null, $field, $messages);
+                    }
+
+                    return $errors;
+                }
+
+                // sizes are numeric for numeric fields
+                $numeric = in_array('integer', $fieldRules, true) || in_array('numeric', $fieldRules, true);
+
+                foreach ($fieldRules as $key => $rule) {
+                    if (is_string($key)) {
+                        $name = $key;
+                        $param = $rule;
+                    } elseif (is_string($rule)) {
+                        $name = $rule;
+                        $param = null;
+                    } elseif (is_callable($rule)) {
+                        $result = call_user_func($rule, $value, $field, $data);
+
+                        if (true !== $result) {
+                            $errors[] = is_string($result)
+                                ? $this->replace($result, $field, null)
+                                : $this->message('custom', null, $field, $messages);
+                        }
+
+                        continue;
+                    } else {
+                        throw new InvalidArgumentException(sprintf('Invalid rule for the "%s" field.', $field));
+                    }
+
+                    if ('required' === $name) {
+                        continue;
+                    }
+
+                    $result = $this->apply($name, $param, $value, $field, $data, $numeric);
+
+                    if (true !== $result) {
+                        $errors[] = is_string($result)
+                            ? $this->replace($result, $field, $param)
+                            : $this->message($name, $param, $field, $messages);
+                    }
+                }
+
+                return $errors;
+            }
+
+            /**
+             * Values of a field, nested fields can have more values (one for each item).
+             *
+             * @return array [path (keys), value, whether the value exists] for each value
+             */
+            private function expand(string $field, array $data): array
+            {
+                // a key containing dots is a field too
+                if (array_key_exists($field, $data) || false === strpos($field, '.')) {
+                    return [[[$field], $data[$field] ?? null, array_key_exists($field, $data)]];
+                }
+
+                $items = [[[], $data, true]];
+
+                foreach (explode('.', $field) as $segment) {
+                    $next = [];
+
+                    foreach ($items as $item) {
+                        list($path, $value, $exists) = $item;
+
+                        if ('*' !== $segment) {
+                            $found = $exists && is_array($value) && array_key_exists($segment, $value);
+                            $next[] = [array_merge($path, [$segment]), $found ? $value[$segment] : null, $found];
+
+                            continue;
+                        }
+
+                        // each item of an array, none when it's missing
+                        if ($exists && is_array($value)) {
+                            foreach ($value as $key => $child) {
+                                $next[] = [array_merge($path, [$key]), $child, true];
+                            }
+                        }
+                    }
+
+                    $items = $next;
+                }
+
+                return $items;
+            }
+
+            /**
+             * Convert a validated value, when enabled by `castTypes()`.
+             *
+             * @return mixed
+             */
+            private function cast($value, array $fieldRules)
+            {
+                if (!$this->cast || !is_scalar($value) || '' === $value) {
+                    return $value;
+                }
+
+                if (in_array('boolean', $fieldRules, true)) {
+                    return in_array($value, [true, 1, '1', 'true'], true);
+                }
+
+                if (in_array('integer', $fieldRules, true)) {
+                    return (int) $value;
+                }
+
+                if (in_array('numeric', $fieldRules, true) && is_numeric($value)) {
+                    return $value + 0;
+                }
+
+                return $value;
             }
 
             /**

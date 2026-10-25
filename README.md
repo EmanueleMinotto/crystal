@@ -30,8 +30,8 @@ $mf('/', function () {
 -   a [Mailer](https://github.com/EmanueleMinotto/crystal/wiki/Mailer) to send emails using `mail()` or SMTP
 -   a [Configuration](https://github.com/EmanueleMinotto/crystal/wiki/Configuration) system with `.env` files support
 -   [Authentication](https://github.com/EmanueleMinotto/crystal/wiki/Authentication) with password hashing, protected routes, gates, throttling, remember-me and API tokens
--   [Request and Response](https://github.com/EmanueleMinotto/crystal/wiki/Request-Response) objects and [Middlewares](https://github.com/EmanueleMinotto/crystal/wiki/Middleware)
--   [Validation](https://github.com/EmanueleMinotto/crystal/wiki/Validation) of the input data
+-   [Request and Response](https://github.com/EmanueleMinotto/crystal/wiki/Request-Response) objects (with `201`, `202`, `204` helpers and `ETag` with 304 responses) and [Middlewares](https://github.com/EmanueleMinotto/crystal/wiki/Middleware)
+-   [Validation](https://github.com/EmanueleMinotto/crystal/wiki/Validation) of the input data, nested fields included
 -   [Error handling](https://github.com/EmanueleMinotto/crystal/wiki/Errors) with error pages, 404 and 405 responses
 -   [CORS](https://github.com/EmanueleMinotto/crystal/wiki/CORS) headers and automatic `OPTIONS` (preflight) responses
 -   [Rate limiting](https://github.com/EmanueleMinotto/crystal/wiki/Rate-Limiting) of routes and actions, with 429 responses
