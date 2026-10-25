@@ -24,6 +24,7 @@ select in: [{"id":"1"},{"id":"3"}]
 read: g3
 read by column: 1
 update in: [{"group":"updated"},{"group":"updated"},{"group":"g3"}]
+paginate: [[{"id":"2"}],2,2]
 delete nothing: 3
 delete in: [{"id":"2"}]
 migrate: ["1"] ["1"]

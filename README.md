@@ -24,7 +24,7 @@ $mf('/', function () {
 -   a [Template Engine](https://github.com/EmanueleMinotto/crystal/wiki/Template-Engine)
 -   a [Logger](https://github.com/EmanueleMinotto/crystal/wiki/Logger) based on [PSR-3](https://www.php-fig.org/psr/psr-3/)
 -   a [Database](https://github.com/EmanueleMinotto/crystal/wiki/Database) interaction system
--   database [Migrations](https://github.com/EmanueleMinotto/crystal/wiki/Migrations)
+-   database [Migrations](https://github.com/EmanueleMinotto/crystal/wiki/Migrations) and [Pagination](https://github.com/EmanueleMinotto/crystal/wiki/Pagination) with the `Link` header
 -   an [Event Listener](https://github.com/EmanueleMinotto/crystal/wiki/Event-Listener) to listen and dispatch events
 -   a [Cache](https://github.com/EmanueleMinotto/crystal/wiki/Cache) system with APCu, array, filesystem, database, Memcached and Redis drivers, namespaces and chains
 -   a [Mailer](https://github.com/EmanueleMinotto/crystal/wiki/Mailer) to send emails using `mail()` or SMTP
