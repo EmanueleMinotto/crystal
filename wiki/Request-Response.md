@@ -76,11 +76,62 @@ $mf('/hello', function () use ($mf) {
 | `header($name)` / `setHeader($name, $value)` / `removeHeader($name)` / `headers()` | names are case insensitive |
 | `cookie($name, $value, $options)` / `forgetCookie($name)` / `cookies()` | options of [setcookie](https://www.php.net/manual/en/function.setcookie.php), by default `httponly`, `samesite=Lax`, `secure` on HTTPS, path `/` |
 | `body()` / `setBody($body)` / `write($content)` | |
-| `json($data, $status)` | JSON body with the `Content-Type` header |
+| `json($data, $status, $flags)` | JSON body with the `Content-Type` header, `$flags` of [json_encode](https://www.php.net/manual/en/function.json-encode.php) (the `json_flags` setting when `null`) |
+| `created($data, $location)` | 201 with the `Location` header, JSON body when `$data` isn't `null` |
+| `accepted($data)` | 202, JSON body when `$data` isn't `null` |
+| `noContent()` | 204 without body |
+| `setEtag($etag, $weak)` / `etag()` / `isNotModified()` | entity tag and 304 responses, see below |
 | `redirect($url, $status = 302)` | `Location` header |
 | `send()` | sends status, headers, cookies and body, used by the router |
 
 Status, headers and cookies are sent only at the end, so they can be changed at any time.
+
+```php
+$mf('/api/users', function () use ($mf) {
+    $id = /* ... */;
+
+    return $mf('response')->created(['id' => $id], '/api/users/'.$id);
+}, 'POST');
+
+$mf('/api/users/(?P<id>[0-9]+)', function ($id) use ($mf) {
+    // ...
+    return $mf('response')->noContent();
+}, 'DELETE');
+```
+
+### JSON flags
+
+The `json_flags` setting contains the default flags of `json_encode()` for every JSON response, error responses and [[Pagination]] included (`0` when not set):
+
+```php
+$mf('json_flags', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+$mf('response')->json(['name' => 'Zoë']);                   // {"name":"Zoë"}
+$mf('response')->json($data, 200, JSON_PRETTY_PRINT);      // flags of a single response
+```
+
+### Entity tags and 304 responses
+
+`setEtag($etag)` sets the `ETag` header: when the client sends a matching `If-None-Match` header, the response is sent as a 304 without body.
+Without argument, the tag is the hash of the body when it's sent.
+
+```php
+$mf('/api/posts/(?P<id>[0-9]+)', function ($id) use ($mf) {
+    $post = $mf('database')->read('posts', $id);
+    $response = $mf('response')->setEtag($post['updated_at']);
+
+    // the body isn't needed when the client already has it
+    if ($response->isNotModified()) {
+        return $response;
+    }
+
+    return $response->json($post);
+});
+```
+
+-   only GET and HEAD requests with a 2xx response are answered with a 304
+-   `If-None-Match` lists and `*` are supported, tags are compared ignoring the `W/` prefix of weak tags (`setEtag($etag, true)`)
+-   `etag()` returns the header value (with quotes), `null` when not set
 
 ## Multiple routes
 

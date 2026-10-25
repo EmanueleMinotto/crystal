@@ -12,6 +12,9 @@
  *         'code' => [function ($value, $field, $data) { return ctype_alnum($value) ?: 'must be alphanumeric'; }],
  *     ]
  *
+ * Nested fields use dots and `*` for each item of an array, like `address.city`
+ * and `items.*.quantity`, errors are listed with the path of each item (`items.0.quantity`).
+ *
  * Empty fields (missing, null, empty strings or arrays) are valid unless required.
  */
 $deps['validator'] = new class () {
@@ -21,6 +24,13 @@ $deps['validator'] = new class () {
      * @var array
      */
     private $rules = [];
+
+    /**
+     * Whether the validated values of `integer`, `numeric` and `boolean` fields are converted.
+     *
+     * @var bool
+     */
+    private $cast = false;
 
     /**
      * Default messages, :field is replaced by the field name, :param by the rule parameter.
@@ -61,6 +71,15 @@ $deps['validator'] = new class () {
     }
 
     /**
+     * Convert the validated values of `integer`, `numeric` and `boolean` fields
+     * to int, int or float and bool, like `"42"` to `42`.
+     */
+    public function castTypes(bool $cast = true)
+    {
+        $this->cast = $cast;
+    }
+
+    /**
      * Validate the data, returning the validated fields.
      *
      * @param array $data     Data to validate
@@ -98,7 +117,41 @@ $deps['validator'] = new class () {
             };
         }
 
-        return array_intersect_key($data, $rules);
+        $validated = array_intersect_key($data, $rules);
+
+        foreach ($validated as $field => $value) {
+            $validated[$field] = $this->cast($value, $rules[$field]);
+        }
+
+        foreach ($rules as $field => $fieldRules) {
+            if (array_key_exists($field, $data)) {
+                continue;
+            }
+
+            foreach ($this->expand((string) $field, $data) as $item) {
+                list($path, $value, $exists) = $item;
+
+                if (!$exists || 1 === count($path)) {
+                    continue;
+                }
+
+                // nested values
+                $target = &$validated;
+
+                foreach ($path as $key) {
+                    if (!isset($target[$key]) || !is_array($target[$key])) {
+                        $target[$key] = [];
+                    }
+
+                    $target = &$target[$key];
+                }
+
+                $target = $this->cast($value, $fieldRules);
+                unset($target);
+            }
+        }
+
+        return $validated;
     }
 
     /**
@@ -119,56 +172,162 @@ $deps['validator'] = new class () {
                 throw new InvalidArgumentException(sprintf('Rules of the "%s" field must be an array.', $field));
             }
 
-            $value = $data[$field] ?? null;
-            $empty = is_null($value) || '' === $value || [] === $value;
+            foreach ($this->expand((string) $field, $data) as $item) {
+                $path = implode('.', $item[0]);
+                $fieldErrors = $this->checkField($path, $item[1], $fieldRules, $data, $messages, (string) $field);
 
-            if ($empty) {
-                if (in_array('required', $fieldRules, true)) {
-                    $errors[$field][] = $this->message('required', null, $field, $messages);
-                }
-
-                continue;
-            }
-
-            // sizes are numeric for numeric fields
-            $numeric = in_array('integer', $fieldRules, true) || in_array('numeric', $fieldRules, true);
-
-            foreach ($fieldRules as $key => $rule) {
-                if (is_string($key)) {
-                    $name = $key;
-                    $param = $rule;
-                } elseif (is_string($rule)) {
-                    $name = $rule;
-                    $param = null;
-                } elseif (is_callable($rule)) {
-                    $result = call_user_func($rule, $value, $field, $data);
-
-                    if (true !== $result) {
-                        $errors[$field][] = is_string($result)
-                            ? $this->replace($result, $field, null)
-                            : $this->message('custom', null, $field, $messages);
-                    }
-
-                    continue;
-                } else {
-                    throw new InvalidArgumentException(sprintf('Invalid rule for the "%s" field.', $field));
-                }
-
-                if ('required' === $name) {
-                    continue;
-                }
-
-                $result = $this->apply($name, $param, $value, $field, $data, $numeric);
-
-                if (true !== $result) {
-                    $errors[$field][] = is_string($result)
-                        ? $this->replace($result, $field, $param)
-                        : $this->message($name, $param, $field, $messages);
+                if (!empty($fieldErrors)) {
+                    $errors[$path] = $fieldErrors;
                 }
             }
         }
 
         return $errors;
+    }
+
+    /**
+     * Error messages of a field.
+     *
+     * @param string $field      Field name, or path of a nested field
+     * @param mixed  $value      Value of the field
+     * @param array  $fieldRules Rules of the field
+     * @param array  $data       Data to validate
+     * @param array  $messages   Custom messages
+     * @param string $pattern    Field name in the rules, like `items.*.quantity`
+     *
+     * @return string[]
+     */
+    private function checkField(string $field, $value, array $fieldRules, array $data, array $messages, string $pattern): array
+    {
+        $errors = [];
+
+        // custom messages of nested fields can use the path or the pattern
+        if ($pattern !== $field) {
+            foreach ($messages as $key => $message) {
+                $key = (string) $key;
+                $concrete = $field.substr($key, strlen($pattern));
+
+                if (0 === strpos($key, $pattern.'.') && !isset($messages[$concrete])) {
+                    $messages[$concrete] = $message;
+                }
+            }
+        }
+
+        $empty = is_null($value) || '' === $value || [] === $value;
+
+        if ($empty) {
+            if (in_array('required', $fieldRules, true)) {
+                $errors[] = $this->message('required', null, $field, $messages);
+            }
+
+            return $errors;
+        }
+
+        // sizes are numeric for numeric fields
+        $numeric = in_array('integer', $fieldRules, true) || in_array('numeric', $fieldRules, true);
+
+        foreach ($fieldRules as $key => $rule) {
+            if (is_string($key)) {
+                $name = $key;
+                $param = $rule;
+            } elseif (is_string($rule)) {
+                $name = $rule;
+                $param = null;
+            } elseif (is_callable($rule)) {
+                $result = call_user_func($rule, $value, $field, $data);
+
+                if (true !== $result) {
+                    $errors[] = is_string($result)
+                        ? $this->replace($result, $field, null)
+                        : $this->message('custom', null, $field, $messages);
+                }
+
+                continue;
+            } else {
+                throw new InvalidArgumentException(sprintf('Invalid rule for the "%s" field.', $field));
+            }
+
+            if ('required' === $name) {
+                continue;
+            }
+
+            $result = $this->apply($name, $param, $value, $field, $data, $numeric);
+
+            if (true !== $result) {
+                $errors[] = is_string($result)
+                    ? $this->replace($result, $field, $param)
+                    : $this->message($name, $param, $field, $messages);
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Values of a field, nested fields can have more values (one for each item).
+     *
+     * @return array [path (keys), value, whether the value exists] for each value
+     */
+    private function expand(string $field, array $data): array
+    {
+        // a key containing dots is a field too
+        if (array_key_exists($field, $data) || false === strpos($field, '.')) {
+            return [[[$field], $data[$field] ?? null, array_key_exists($field, $data)]];
+        }
+
+        $items = [[[], $data, true]];
+
+        foreach (explode('.', $field) as $segment) {
+            $next = [];
+
+            foreach ($items as $item) {
+                list($path, $value, $exists) = $item;
+
+                if ('*' !== $segment) {
+                    $found = $exists && is_array($value) && array_key_exists($segment, $value);
+                    $next[] = [array_merge($path, [$segment]), $found ? $value[$segment] : null, $found];
+
+                    continue;
+                }
+
+                // each item of an array, none when it's missing
+                if ($exists && is_array($value)) {
+                    foreach ($value as $key => $child) {
+                        $next[] = [array_merge($path, [$key]), $child, true];
+                    }
+                }
+            }
+
+            $items = $next;
+        }
+
+        return $items;
+    }
+
+    /**
+     * Convert a validated value, when enabled by `castTypes()`.
+     *
+     * @return mixed
+     */
+    private function cast($value, array $fieldRules)
+    {
+        if (!$this->cast || !is_scalar($value) || '' === $value) {
+            return $value;
+        }
+
+        if (in_array('boolean', $fieldRules, true)) {
+            return in_array($value, [true, 1, '1', 'true'], true);
+        }
+
+        if (in_array('integer', $fieldRules, true)) {
+            return (int) $value;
+        }
+
+        if (in_array('numeric', $fieldRules, true) && is_numeric($value)) {
+            return $value + 0;
+        }
+
+        return $value;
     }
 
     /**
