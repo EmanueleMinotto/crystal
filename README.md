@@ -39,3 +39,6 @@ $mf('/', function () {
 ## Documentation
 
 https://github.com/EmanueleMinotto/crystal/wiki
+
+-   [Comparison](https://github.com/EmanueleMinotto/crystal/wiki/Comparison) with other frameworks and microframeworks
+-   [When to use crystal](https://github.com/EmanueleMinotto/crystal/wiki/When-to-use-crystal), including free hostings like InfinityFree

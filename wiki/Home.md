@@ -37,3 +37,8 @@ $mf('/', function () {
 -   [[Errors]] handling with error pages, 404 and 405 responses
 -   [[Session]] with hardened cookies and [[CSRF]] protection
 -   **no external dependencies, just a single PHP file!**
+
+## Choosing crystal
+
+-   [[Comparison]] with Slim, Flight, Fat-Free, Leaf, Laravel, Symfony and Laminas/Mezzio
+-   [[When to use crystal]]: good and bad fits, and how to use it on free hostings like InfinityFree
