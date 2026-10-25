@@ -40,6 +40,12 @@ $mf('/posts/(?P<id>[0-9]+)', $csrf->protect($auth->protect(function ($id) {
 
 Safe methods (`GET`, `HEAD`, `OPTIONS`) and requests authenticated by a bearer token (see [[Authentication]]) aren't checked.
 
+With [[Middleware]], `$csrf->middleware()` returns a 403 response for invalid tokens:
+
+```php
+$mf('/posts', $mf('middleware')->wrap($callback, $csrf->middleware(), $auth->middleware()), 'POST');
+```
+
 ## Manual checks
 
 ```php

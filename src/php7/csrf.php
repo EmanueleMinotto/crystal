@@ -149,6 +149,25 @@ $deps['csrf'] = new class ($deps) {
     }
 
     /**
+     * Middleware allowing only requests with a valid token, the others receive a 403 response.
+     *
+     * Safe methods (GET, HEAD, OPTIONS) and requests authenticated by a
+     * bearer token aren't checked.
+     *
+     * @return callable
+     */
+    public function middleware()
+    {
+        return function ($request, callable $next) {
+            if ($this->skip() || $this->check()) {
+                return $next();
+            }
+
+            return $this->service('response')->setStatus(403);
+        };
+    }
+
+    /**
      * Check if the current request doesn't need a token.
      */
     public function skip(): bool

@@ -591,6 +591,33 @@ $deps['auth'] = new class ($deps) {
         };
     }
 
+    /**
+     * Middleware allowing only authenticated (and authorized) users.
+     *
+     * Guests receive a 401 response, unauthorized users a 403 one.
+     * The gate receives the current user and the request.
+     *
+     * @param string|null $ability Gate checked after the authentication
+     *
+     * @return callable
+     */
+    public function middleware($ability = null)
+    {
+        assert(is_null($ability) || is_string($ability));
+
+        return function ($request, callable $next) use ($ability) {
+            if (!$this->check()) {
+                return $this->service('response')->setStatus(401);
+            }
+
+            if (!is_null($ability) && !$this->can($ability, $request)) {
+                return $this->service('response')->setStatus(403);
+            }
+
+            return $next();
+        };
+    }
+
     // === INTERNALS ===
     /**
      * Regenerate the session identifier (and the CSRF token) to prevent session fixation.

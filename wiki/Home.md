@@ -32,5 +32,6 @@ $mf('/', function () {
 -   a [[Configuration]] system with `.env` files support
 -   an [[Event Listener]] to listen and dispatch events
 -   [[Authentication]] with password hashing, protected routes, gates, throttling, remember-me and API tokens
+-   [[Request Response]] objects and [[Middleware]]
 -   [[Session]] with hardened cookies and [[CSRF]] protection
 -   **no external dependencies, just a single PHP file!**
