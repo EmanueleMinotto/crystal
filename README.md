@@ -19,7 +19,8 @@ $mf('/', function () {
 -   differenced [FIFO](http://en.wikipedia.org/wiki/FIFO) [queues](http://en.wikipedia.org/wiki/Queue_%28abstract_data_type%29) for each `$priority`
 -   command line usage
 -   integrated [Dependency Injection](https://github.com/EmanueleMinotto/crystal/wiki/Dependency-Injection) (based on [PSR-11](https://www.php-fig.org/psr/psr-11/)) and settings system
--   named patterns, named routes with URL generation and groups of routes
+-   named patterns and placeholders, named routes with URL generation, groups of routes and `get`, `post`, `put`, `patch`, `delete` shortcuts
+-   services injected in the route callbacks by parameter name or class, arrays returned as JSON responses
 -   an [Autoloader](https://github.com/EmanueleMinotto/crystal/wiki/Autoloader) based on the [PSR-0](https://www.php-fig.org/psr/psr-0/) standard
 -   a [Template Engine](https://github.com/EmanueleMinotto/crystal/wiki/Template-Engine)
 -   a [Logger](https://github.com/EmanueleMinotto/crystal/wiki/Logger) based on [PSR-3](https://www.php-fig.org/psr/psr-3/)
