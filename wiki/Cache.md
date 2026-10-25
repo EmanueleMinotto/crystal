@@ -61,7 +61,7 @@ Each entry is stored as `{key}.cache`. TTL is enforced on read.
 
 ### Database
 
-Uses a PDO connection (MySQL or SQLite). The table `crystal_cache` is created automatically if it does not exist.
+Uses a PDO connection (MySQL, MariaDB, PostgreSQL or SQLite). The table `crystal_cache` is created automatically if it does not exist.
 
 ```php
 $pdo = new PDO('mysql:host=localhost;dbname=myapp', 'user', 'pass');

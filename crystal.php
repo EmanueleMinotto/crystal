@@ -397,8 +397,8 @@ return new class () {
 
                     if (!$created) {
                         $database->query(sprintf(
-                            'CREATE TABLE IF NOT EXISTS `%s` (selector VARCHAR(255) NOT NULL PRIMARY KEY, hash VARCHAR(255) NOT NULL, user_id VARCHAR(255) NOT NULL, expires INT NOT NULL)',
-                            $table
+                            'CREATE TABLE IF NOT EXISTS %s (selector VARCHAR(255) NOT NULL PRIMARY KEY, hash VARCHAR(255) NOT NULL, user_id VARCHAR(255) NOT NULL, expires INT NOT NULL)',
+                            $database->quoteIdentifier($table)
                         ));
                         $created = true;
                     }
@@ -1282,15 +1282,18 @@ return new class () {
 
                         return new class ($config) {
                             private $pdo;
+                            private $driver;
 
                             public function __construct(\PDO $pdo)
                             {
                                 $this->pdo = $pdo;
                                 $this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+                                $this->driver = $this->pdo->getAttribute(\PDO::ATTR_DRIVER_NAME);
                                 $this->pdo->exec(
                                     'CREATE TABLE IF NOT EXISTS crystal_cache ('
                                     .'cache_key VARCHAR(255) NOT NULL PRIMARY KEY,'
-                                    .'cache_value LONGTEXT NOT NULL,'
+                                    // TEXT is limited to 64KB in MySQL
+                                    .'cache_value '.('mysql' === $this->driver ? 'LONGTEXT' : 'TEXT').' NOT NULL,'
                                     .'expires_at INT DEFAULT NULL'
                                     .')'
                                 );
@@ -1314,17 +1317,61 @@ return new class () {
                                     return $default;
                                 }
 
-                                return unserialize($row['cache_value']);
+                                return unserialize($this->decode($row['cache_value']));
                             }
 
                             public function set($key, $value, $ttl = null)
                             {
                                 $expires = ($ttl !== null && $ttl > 0) ? time() + $ttl : null;
-                                $stmt = $this->pdo->prepare(
-                                    'REPLACE INTO crystal_cache (cache_key, cache_value, expires_at) VALUES (?, ?, ?)'
-                                );
+                                $params = [$key, $this->encode(serialize($value)), $expires];
 
-                                return $stmt->execute([$key, serialize($value), $expires]);
+                                switch ($this->driver) {
+                                    case 'mysql':
+                                    case 'sqlite':
+                                        return $this->pdo
+                                            ->prepare('REPLACE INTO crystal_cache (cache_key, cache_value, expires_at) VALUES (?, ?, ?)')
+                                            ->execute($params);
+
+                                    case 'pgsql':
+                                        return $this->pdo
+                                            ->prepare(
+                                                'INSERT INTO crystal_cache (cache_key, cache_value, expires_at) VALUES (?, ?, ?) '
+                                                .'ON CONFLICT (cache_key) DO UPDATE SET cache_value = EXCLUDED.cache_value, expires_at = EXCLUDED.expires_at'
+                                            )
+                                            ->execute($params);
+                                }
+
+                                // other databases: delete and insert in a transaction
+                                $transaction = !$this->pdo->inTransaction() && $this->pdo->beginTransaction();
+
+                                try {
+                                    $this->delete($key);
+                                    $this->pdo
+                                        ->prepare('INSERT INTO crystal_cache (cache_key, cache_value, expires_at) VALUES (?, ?, ?)')
+                                        ->execute($params);
+                                } catch (\Exception $exception) {
+                                    if ($transaction) {
+                                        $this->pdo->rollBack();
+                                    }
+
+                                    throw $exception;
+                                }
+
+                                return !$transaction || $this->pdo->commit();
+                            }
+
+                            /**
+                             * PostgreSQL TEXT columns can't contain NUL bytes, used by
+                             * serialize() for private and protected properties.
+                             */
+                            private function encode($value)
+                            {
+                                return 'pgsql' === $this->driver ? base64_encode($value) : $value;
+                            }
+
+                            private function decode($value)
+                            {
+                                return 'pgsql' === $this->driver ? base64_decode($value) : $value;
                             }
 
                             public function delete($key)
@@ -2581,6 +2628,37 @@ return new class () {
             }
 
             /**
+             * Quote a table or column name, using the syntax of the database.
+             *
+             * Names containing a dot (like `schema.table`) are quoted part by part.
+             */
+            public function quoteIdentifier(string $name): string
+            {
+                switch (static::$pdo->getAttribute(PDO::ATTR_DRIVER_NAME)) {
+                    case 'mysql':
+                        // SQLite reads unknown double quoted identifiers as strings
+                    case 'sqlite':
+                        $quotes = ['`', '`'];
+
+                        break;
+
+                    case 'sqlsrv':
+                    case 'dblib':
+                        $quotes = ['[', ']'];
+
+                        break;
+
+                    default:
+                        // SQL standard, used by PostgreSQL, Oracle, ...
+                        $quotes = ['"', '"'];
+                }
+
+                return implode('.', array_map(function ($part) use ($quotes) {
+                    return $quotes[0].str_replace($quotes[1], $quotes[1].$quotes[1], $part).$quotes[1];
+                }, explode('.', $name)));
+            }
+
+            /**
              * Execute a query and parse result rows as array.
              */
             public function query(string $sql, array $params = [])
@@ -2612,12 +2690,12 @@ return new class () {
                 if (is_array($fields)) {
                     $fields = join(', ', array_map(function ($field) {
                         return preg_match('/^[a-zA-Z0-9\_]+$/', $field)
-                            ? sprintf('`%s`', $field)
+                            ? $this->quoteIdentifier($field)
                             : $field;
                     }, $fields));
                 }
 
-                $sql = sprintf('SELECT %s FROM `%s`', $fields, $table);
+                $sql = sprintf('SELECT %s FROM %s', $fields, $this->quoteIdentifier($table));
 
                 $params = [];
 
@@ -2648,9 +2726,9 @@ return new class () {
             {
                 $keys = array_keys($values);
                 $sql = sprintf(
-                    'INSERT INTO `%s` (%s) VALUES (:%s)',
-                    $table,
-                    implode(', ', $keys),
+                    'INSERT INTO %s (%s) VALUES (:%s)',
+                    $this->quoteIdentifier($table),
+                    implode(', ', array_map([$this, 'quoteIdentifier'], $keys)),
                     implode(', :', $keys)
                 );
 
@@ -2669,7 +2747,11 @@ return new class () {
             public function read(string $table, $where, $key = 'id')
             {
                 $where = $this->buildWhereCondition($where, $key);
-                $stmt = static::$pdo->prepare(sprintf('SELECT * FROM `%s` WHERE %s LIMIT 1', $table, $where['sql']));
+                $stmt = static::$pdo->prepare(sprintf(
+                    'SELECT * FROM %s WHERE %s LIMIT 1',
+                    $this->quoteIdentifier($table),
+                    $where['sql']
+                ));
                 $stmt->execute($where['params']);
 
                 return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
@@ -2684,11 +2766,16 @@ return new class () {
                 $keys = array_keys($values);
 
                 $set = join(', ', array_map(function ($key) {
-                    return sprintf('`%s` = :%s', $key, $key);
+                    return sprintf('%s = :%s', $this->quoteIdentifier($key), $key);
                 }, $keys));
 
                 $where = $this->buildWhereCondition($where, $key);
-                $stmt = static::$pdo->prepare(sprintf('UPDATE `%s` SET %s WHERE %s', $table, $set, $where['sql']));
+                $stmt = static::$pdo->prepare(sprintf(
+                    'UPDATE %s SET %s WHERE %s',
+                    $this->quoteIdentifier($table),
+                    $set,
+                    $where['sql']
+                ));
 
                 return $stmt->execute(array_merge($where['params'], $params));
             }
@@ -2699,7 +2786,11 @@ return new class () {
             public function delete(string $table, $where, $key = 'id')
             {
                 $where = $this->buildWhereCondition($where, $key);
-                $stmt = static::$pdo->prepare(sprintf('DELETE FROM `%s` WHERE %s', $table, $where['sql']));
+                $stmt = static::$pdo->prepare(sprintf(
+                    'DELETE FROM %s WHERE %s',
+                    $this->quoteIdentifier($table),
+                    $where['sql']
+                ));
 
                 return $stmt->execute($where['params']);
             }
@@ -2774,23 +2865,9 @@ return new class () {
 
                     // 1 => `id` = 1
                     // 'foo' => `id` = "foo"
-                    if (is_scalar($value) || is_numeric($value)) {
-                        return [
-                            'params' => [
-                                ':id' => $value
-                            ],
-                            'sql' => '`id` = :id',
-                        ];
-                    }
-
-                    if (array_is_list($value)) {
-                        // [1, 'foo'] => `id` IN (1, "foo")
-                        return [
-                            'params' => [
-                                ':id' => $value
-                            ],
-                            'sql' => '`id` IN (:id)',
-                        ];
+                    // [1, 'foo'] => `id` IN (1, "foo")
+                    if (is_scalar($value) || array_is_list($value)) {
+                        return $this->buildWhereCondition($value, 'id');
                     }
 
                     if (is_array($value)) {
@@ -2802,7 +2879,7 @@ return new class () {
                         foreach ($value as $k => $v) {
                             if (preg_match('/^[a-zA-Z0-9\_]+$/', $k)) {
                                 $v = [$k => $v];
-                                $k = sprintf('`%s` = :%s', $k, $k);
+                                $k = sprintf('%s = :%s', $this->quoteIdentifier($k), $k);
                             }
 
                             if (!empty($sql)) {
@@ -2836,12 +2913,24 @@ return new class () {
                     $prefixed = ':'.$key;
 
                     if (is_array($value) && array_is_list($value)) {
-                        // [1, 2], 'bar' => `bar` IN (1, 2)
+                        // [], 'bar' => no rows, instead of an invalid `bar` IN ()
+                        if (empty($value)) {
+                            return [
+                                'params' => [],
+                                'sql' => '1 = 0',
+                            ];
+                        }
+
+                        // [1, 2], 'bar' => `bar` IN (1, 2), a placeholder for each value
+                        $params = [];
+
+                        foreach (array_values($value) as $index => $item) {
+                            $params[$prefixed.'_'.$index] = $item;
+                        }
+
                         return [
-                            'params' => [
-                                $prefixed => $value
-                            ],
-                            'sql' => sprintf('`%s` IN (%s)', $key, $prefixed),
+                            'params' => $params,
+                            'sql' => sprintf('%s IN (%s)', $this->quoteIdentifier($key), implode(', ', array_keys($params))),
                         ];
                     }
 
@@ -2850,7 +2939,7 @@ return new class () {
                         'params' => [
                             $prefixed => $value
                         ],
-                        'sql' => sprintf('`%s` = %s', $key, $prefixed),
+                        'sql' => sprintf('%s = %s', $this->quoteIdentifier($key), $prefixed),
                     ];
                 }
             }
@@ -3897,9 +3986,10 @@ return new class () {
              */
             private function createTable()
             {
-                $this->database()->query(sprintf(
-                    'CREATE TABLE IF NOT EXISTS `%s` (version VARCHAR(255) NOT NULL PRIMARY KEY, applied_at INT NOT NULL)',
-                    $this->table
+                $database = $this->database();
+                $database->query(sprintf(
+                    'CREATE TABLE IF NOT EXISTS %s (version VARCHAR(255) NOT NULL PRIMARY KEY, applied_at INT NOT NULL)',
+                    $database->quoteIdentifier($this->table)
                 ));
             }
 

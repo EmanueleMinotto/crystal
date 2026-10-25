@@ -314,15 +314,18 @@ $deps['cache'] = new class () {
 
                 return new class ($config) {
                     private $pdo;
+                    private $driver;
 
                     public function __construct(\PDO $pdo)
                     {
                         $this->pdo = $pdo;
                         $this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+                        $this->driver = $this->pdo->getAttribute(\PDO::ATTR_DRIVER_NAME);
                         $this->pdo->exec(
                             'CREATE TABLE IF NOT EXISTS crystal_cache ('
                             .'cache_key VARCHAR(255) NOT NULL PRIMARY KEY,'
-                            .'cache_value LONGTEXT NOT NULL,'
+                            // TEXT is limited to 64KB in MySQL
+                            .'cache_value '.('mysql' === $this->driver ? 'LONGTEXT' : 'TEXT').' NOT NULL,'
                             .'expires_at INT DEFAULT NULL'
                             .')'
                         );
@@ -346,17 +349,61 @@ $deps['cache'] = new class () {
                             return $default;
                         }
 
-                        return unserialize($row['cache_value']);
+                        return unserialize($this->decode($row['cache_value']));
                     }
 
                     public function set($key, $value, $ttl = null)
                     {
                         $expires = ($ttl !== null && $ttl > 0) ? time() + $ttl : null;
-                        $stmt = $this->pdo->prepare(
-                            'REPLACE INTO crystal_cache (cache_key, cache_value, expires_at) VALUES (?, ?, ?)'
-                        );
+                        $params = [$key, $this->encode(serialize($value)), $expires];
 
-                        return $stmt->execute([$key, serialize($value), $expires]);
+                        switch ($this->driver) {
+                            case 'mysql':
+                            case 'sqlite':
+                                return $this->pdo
+                                    ->prepare('REPLACE INTO crystal_cache (cache_key, cache_value, expires_at) VALUES (?, ?, ?)')
+                                    ->execute($params);
+
+                            case 'pgsql':
+                                return $this->pdo
+                                    ->prepare(
+                                        'INSERT INTO crystal_cache (cache_key, cache_value, expires_at) VALUES (?, ?, ?) '
+                                        .'ON CONFLICT (cache_key) DO UPDATE SET cache_value = EXCLUDED.cache_value, expires_at = EXCLUDED.expires_at'
+                                    )
+                                    ->execute($params);
+                        }
+
+                        // other databases: delete and insert in a transaction
+                        $transaction = !$this->pdo->inTransaction() && $this->pdo->beginTransaction();
+
+                        try {
+                            $this->delete($key);
+                            $this->pdo
+                                ->prepare('INSERT INTO crystal_cache (cache_key, cache_value, expires_at) VALUES (?, ?, ?)')
+                                ->execute($params);
+                        } catch (\Exception $exception) {
+                            if ($transaction) {
+                                $this->pdo->rollBack();
+                            }
+
+                            throw $exception;
+                        }
+
+                        return !$transaction || $this->pdo->commit();
+                    }
+
+                    /**
+                     * PostgreSQL TEXT columns can't contain NUL bytes, used by
+                     * serialize() for private and protected properties.
+                     */
+                    private function encode($value)
+                    {
+                        return 'pgsql' === $this->driver ? base64_encode($value) : $value;
+                    }
+
+                    private function decode($value)
+                    {
+                        return 'pgsql' === $this->driver ? base64_decode($value) : $value;
                     }
 
                     public function delete($key)

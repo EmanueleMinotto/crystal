@@ -1,13 +1,21 @@
 name: Continuous Integration
 
+# pull requests are tested once, not for both the push and the pull_request events
 on:
-    - pull_request
-    - push
+    push:
+        branches: [master]
+    pull_request:
+
+concurrency:
+    group: ci-${{ github.ref }}
+    cancel-in-progress: true
 
 jobs:
+    # every supported PHP version, with the APCu cache driver enabled
     tests:
         runs-on: ubuntu-latest
         strategy:
+            fail-fast: false
             matrix:
                 php:
                     [
@@ -23,22 +31,23 @@ jobs:
                         "8.4",
                         "8.5",
                     ]
-                extensions: ["apcu", ""]
 
-        name: PHP ${{ matrix.php }} tests with extensions "${{ matrix.extensions }}"
+        name: PHP ${{ matrix.php }}
         steps:
-            - uses: actions/checkout@v2
+            - uses: actions/checkout@v4
 
             - uses: shivammathur/setup-php@v2
               with:
                   php-version: ${{ matrix.php }}
                   coverage: none
-                  extensions: ${{ matrix.extensions }}
+                  extensions: apcu
+                  ini-values: apc.enable_cli=1
 
             - run: "composer install"
             - run: "composer test"
 
-    mysql-cache:
+    # databases and cache servers, APCu is disabled to test the fallback
+    services:
         runs-on: ubuntu-latest
         services:
             mysql:
@@ -53,27 +62,18 @@ jobs:
                     --health-interval=10s
                     --health-timeout=5s
                     --health-retries=3
-
-        name: MySQL cache driver
-        steps:
-            - uses: actions/checkout@v2
-
-            - uses: shivammathur/setup-php@v2
-              with:
-                  php-version: "8.4"
-                  coverage: none
-                  extensions: pdo_mysql
-
-            - run: "composer install"
-            - run: "composer test"
-              env:
-                  CRYSTAL_MYSQL_DSN: "mysql:host=127.0.0.1;dbname=crystal_test"
-                  CRYSTAL_MYSQL_USER: root
-                  CRYSTAL_MYSQL_PASS: root
-
-    redis-memcached-cache:
-        runs-on: ubuntu-latest
-        services:
+            postgres:
+                image: postgres:16
+                env:
+                    POSTGRES_PASSWORD: postgres
+                    POSTGRES_DB: crystal_test
+                ports:
+                    - 5432:5432
+                options: >-
+                    --health-cmd="pg_isready"
+                    --health-interval=10s
+                    --health-timeout=5s
+                    --health-retries=3
             redis:
                 image: redis:7
                 ports:
@@ -83,18 +83,24 @@ jobs:
                 ports:
                     - 11211:11211
 
-        name: Redis and Memcached cache drivers
+        name: MySQL, PostgreSQL, Redis, Memcached, without APCu
         steps:
-            - uses: actions/checkout@v2
+            - uses: actions/checkout@v4
 
             - uses: shivammathur/setup-php@v2
               with:
                   php-version: "8.4"
                   coverage: none
-                  extensions: redis, memcached
+                  extensions: pdo_mysql, pdo_pgsql, redis, memcached, :apcu
 
             - run: "composer install"
             - run: "composer test"
               env:
+                  CRYSTAL_MYSQL_DSN: "mysql:host=127.0.0.1;dbname=crystal_test"
+                  CRYSTAL_MYSQL_USER: root
+                  CRYSTAL_MYSQL_PASS: root
+                  CRYSTAL_PGSQL_DSN: "pgsql:host=127.0.0.1;dbname=crystal_test"
+                  CRYSTAL_PGSQL_USER: postgres
+                  CRYSTAL_PGSQL_PASS: postgres
                   CRYSTAL_REDIS_HOST: 127.0.0.1
                   CRYSTAL_MEMCACHED_HOST: 127.0.0.1
