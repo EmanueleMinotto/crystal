@@ -261,7 +261,8 @@ return new class () {
 
         /**
          * Function invoked after the routing, when no route matches the
-         * request the errors service (if enabled) sends a 404 or 405 response.
+         * request the errors service (if enabled) sends a 404 or 405 response,
+         * when CORS is enabled OPTIONS requests are answered by the router.
          *
          * @return void
          */
@@ -273,13 +274,33 @@ return new class () {
 
             $errors = $deps['errors'] ?? null;
 
+            if ($routing['matched'] || $responded || (is_object($errors) && method_exists($errors, 'hasSent') && $errors->hasSent())) {
+                return;
+            }
+
+            $router = $deps['router'] ?? null;
+            $cors = $deps['cors'] ?? null;
+
+            // preflight requests, the CORS headers are sent by the cors service
             if (
-                $routing['matched'] ||
-                $responded ||
+                'OPTIONS' === strtoupper($_SERVER['REQUEST_METHOD']) &&
+                !empty($routing['methods']) &&
+                is_object($cors) &&
+                method_exists($cors, 'isEnabled') &&
+                $cors->isEnabled() &&
+                is_object($router) &&
+                method_exists($router, 'options') &&
+                !headers_sent()
+            ) {
+                $router->options($routing['methods'])->send();
+
+                return;
+            }
+
+            if (
                 !is_object($errors) ||
                 !method_exists($errors, 'isEnabled') ||
-                !$errors->isEnabled() ||
-                $errors->hasSent()
+                !$errors->isEnabled()
             ) {
                 return;
             }

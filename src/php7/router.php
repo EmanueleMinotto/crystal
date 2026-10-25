@@ -198,6 +198,48 @@ $deps['router'] = new class ($deps, $this) {
     }
 
     /**
+     * Methods listed by route methods, only simple lists like `GET|POST` can be listed.
+     *
+     * @param string[] $methods Methods (regular expressions) of the routes
+     *
+     * @return string[]
+     */
+    public function allowedMethods(array $methods): array
+    {
+        $allowed = [];
+
+        foreach ($methods as $method) {
+            if (preg_match('#^[A-Za-z]+(\|[A-Za-z]+)*$#', $method)) {
+                $allowed = array_merge($allowed, explode('|', strtoupper($method)));
+            }
+        }
+
+        return array_values(array_unique($allowed));
+    }
+
+    /**
+     * Response of an OPTIONS request matching only the path of routes, sent when CORS is enabled.
+     *
+     * @param string[] $methods Methods (regular expressions) of the routes matching the path
+     *
+     * @return object
+     */
+    public function options(array $methods)
+    {
+        $service = $this->deps['response'];
+        $response = is_callable($service) ? call_user_func($service) : $service;
+        $allowed = $this->allowedMethods($methods);
+
+        $response->setStatus(204);
+
+        if (!empty($allowed)) {
+            $response->setHeader('Allow', implode(', ', array_unique(array_merge($allowed, ['OPTIONS']))));
+        }
+
+        return $response;
+    }
+
+    /**
      * Split a route in literal parts and [name, subpattern] parameters.
      *
      * @throws LogicException If the route contains other regular expression constructs

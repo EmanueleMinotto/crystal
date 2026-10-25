@@ -14,7 +14,7 @@
  */
 $deps['errors'] = new class ($deps) {
     /**
-     * Dynamic set of dependencies, used to retrieve the request, response and logger services.
+     * Dynamic set of dependencies, used to retrieve the request, response, router and logger services.
      *
      * @var array
      */
@@ -219,19 +219,27 @@ $deps['errors'] = new class ($deps) {
             return $this->response(404);
         }
 
-        $allowed = [];
+        $router = $this->deps['router'] ?? null;
 
-        foreach ($methods as $method) {
-            // only simple lists like GET|POST can be listed
-            if (preg_match('#^[A-Za-z]+(\|[A-Za-z]+)*$#', $method)) {
-                $allowed = array_merge($allowed, explode('|', strtoupper($method)));
+        if (is_object($router) && method_exists($router, 'allowedMethods')) {
+            $allowed = $router->allowedMethods($methods);
+        } else {
+            // the router has been replaced
+            $allowed = [];
+
+            foreach ($methods as $method) {
+                if (preg_match('#^[A-Za-z]+(\|[A-Za-z]+)*$#', $method)) {
+                    $allowed = array_merge($allowed, explode('|', strtoupper($method)));
+                }
             }
+
+            $allowed = array_unique($allowed);
         }
 
         $response = $this->response(405);
 
         if (!empty($allowed)) {
-            $response->setHeader('Allow', implode(', ', array_unique($allowed)));
+            $response->setHeader('Allow', implode(', ', $allowed));
         }
 
         return $response;
