@@ -98,3 +98,45 @@ $mf($mf('router:not-found'), function () {
     echo 'Error 404: Page not Found';
 });
 ```
+
+## Named routes and URLs
+
+Routes can be named using the fifth argument, or with `$mf('router')->route()`, and their URLs can be generated:
+
+```php
+$router = $mf('router');
+
+$mf('/posts/(?P<id>[0-9]+)', function ($id) { /* ... */ }, 'GET', 0, 'posts.show');
+// or
+$router->route('posts.show', '/posts/(?P<id>[0-9]+)', function ($id) { /* ... */ });
+
+$router->url('posts.show', ['id' => 42]);              // "/posts/42"
+$router->url('posts.show', ['id' => 42, 'page' => 2]); // "/posts/42?page=2"
+$router->has('posts.show');                            // true
+```
+
+-   the base path of the application (the directory of `SCRIPT_NAME`) is added
+-   values are URL encoded and must match their subpattern, otherwise an `InvalidArgumentException` is thrown
+-   parameters not used by the route are added to the query string
+-   names must be unique, defining a name twice throws an `InvalidArgumentException`
+
+URLs can be generated only for routes made of literal characters, escaped characters (like `\.`) and named subpatterns: for routes using other constructs (like `.*`, alternatives, optional groups or `\d` outside a subpattern) `url()` throws a `LogicException`.
+Such routes can still be named and used.
+
+## Groups
+
+Groups share a prefix of the path, a prefix of the names and [[Middleware]] (the first one is the outermost):
+
+```php
+$router->group('/admin', function ($route) {
+    $route('/users', $listUsers, 'GET', 0, 'users');                 // "/admin/users", named "admin.users"
+    $route->route('users.update', '/users/(?P<id>[0-9]+)', $update, 'POST');
+
+    // nested groups: prefixes are concatenated, the outer middlewares are the outermost
+    $route->group('/reports', function ($route) {
+        $route('/daily', $daily, 'GET', 0, 'daily');                  // named "admin.reports.daily"
+    }, [$cache], 'reports.');
+}, [$auth->middleware('admin'), $csrf->middleware()], 'admin.');
+```
+
+`$route` accepts the same arguments of `$mf` (with the name as fifth argument), routes in groups work like the other ones: priorities, multiple matches and `router:not-found` aren't changed.

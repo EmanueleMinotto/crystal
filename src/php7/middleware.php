@@ -60,8 +60,9 @@ $deps['middleware'] = new class ($deps) {
 
                 // response created from the output of a callback not returning one
                 $implicit = null;
+                $status = 200;
 
-                $handler = function () use ($args, &$implicit) {
+                $handler = function () use ($args, &$implicit, &$status) {
                     ob_start();
 
                     try {
@@ -82,9 +83,9 @@ $deps['middleware'] = new class ($deps) {
                         return $result;
                     }
 
-                    $status = http_response_code();
+                    $status = is_int(http_response_code()) ? http_response_code() : 200;
                     $implicit = $this->service('response')
-                        ->setStatus(is_int($status) ? $status : 200)
+                        ->setStatus($status)
                         ->setBody($output);
 
                     return $implicit;
@@ -100,7 +101,12 @@ $deps['middleware'] = new class ($deps) {
 
                 if (!is_null($implicit) && (!is_object($response) || $response === $implicit)) {
                     // the callback didn't return a response: the next callbacks aren't skipped
-                    $implicit->send();
+                    if ($implicit->status() === $status && empty($implicit->headers()) && empty($implicit->cookies())) {
+                        // unchanged by the middlewares
+                        echo $implicit->body();
+                    } else {
+                        $implicit->send();
+                    }
 
                     return null;
                 }

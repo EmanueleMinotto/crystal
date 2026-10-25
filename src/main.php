@@ -118,6 +118,11 @@ return new class () {
                 break;
         }
 
+        // routes can be named using the fifth argument
+        if (func_num_args() >= 5 && is_string($args[0]) && !is_null($args[4])) {
+            $deps['router']->name($args[4], $args[0]);
+        }
+
         if (!is_null($deploy)) {
             goto invoke_deploy;
         }

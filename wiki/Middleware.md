@@ -35,15 +35,13 @@ $mf('/posts/(?P<id>[0-9]+)', $middleware->wrap(function ($id) {
 Named route parameters keep working, and they're available in middlewares with `$request->param('id')`.
 Wrapped callbacks can be wrapped again.
 
-To share middlewares between routes, wrap the callbacks with a function:
+To share middlewares between routes, use a group (see [[CGI Usage]]):
 
 ```php
-$admin = function (callable $callback) use ($middleware, $auth, $securityHeaders) {
-    return $middleware->wrap($callback, $securityHeaders, $auth->middleware('admin'));
-};
-
-$mf('/admin', $admin(function () { /* ... */ }));
-$mf('/admin/users', $admin(function () { /* ... */ }));
+$mf('router')->group('/admin', function ($route) {
+    $route('', function () { /* ... */ });
+    $route('/users', function () { /* ... */ });
+}, [$securityHeaders, $auth->middleware('admin')]);
 ```
 
 ## The response of `$next()`
