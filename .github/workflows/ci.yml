@@ -11,6 +11,27 @@ concurrency:
     cancel-in-progress: true
 
 jobs:
+    # the tests run against crystal.php: it must be built from the src directory
+    build:
+        runs-on: ubuntu-latest
+        name: crystal.php built from src
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: shivammathur/setup-php@v2
+              with:
+                  php-version: "8.4"
+                  coverage: none
+
+            - run: "composer install"
+            - run: "composer build"
+            - name: "Check that crystal.php and the formatting are up to date"
+              run: |
+                  if ! git diff --exit-code; then
+                      echo "::error::Run 'composer build' and commit the changes."
+                      exit 1
+                  fi
+
     # every supported PHP version, with the APCu cache driver enabled
     tests:
         runs-on: ubuntu-latest

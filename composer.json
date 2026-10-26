@@ -1,10 +1,19 @@
 {
     "require-dev": {
-        "friendsofphp/php-cs-fixer": "*",
+        "friendsofphp/php-cs-fixer": "^2.19 || ~3.95.0",
         "phpunit/phpunit": "*"
     },
     "scripts": {
         "build": "php src/build.php && php-cs-fixer --config=src/.php-cs-fixer.php fix --allow-risky=yes --quiet",
-        "test": "phpunit tests"
+        "test": "phpunit tests",
+        "check": [
+            "@build",
+            "@test"
+        ]
+    },
+    "scripts-descriptions": {
+        "build": "Build crystal.php from the src directory and format the code",
+        "test": "Run the tests against crystal.php",
+        "check": "Build crystal.php and run the tests, run it before committing"
     }
 }

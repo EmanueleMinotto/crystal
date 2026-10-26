@@ -12,7 +12,9 @@ Code must be compatible with PHP 7.0+ and can be split into the `src/php7` folde
 Polyfills can be added in the `src/polyfills` folder.
 See existing files for examples.
 
-Before committing your code, make sure you have built and linted with `composer build` and verified tests with `composer test`.
+`crystal.php` is built from the `src` folder: change the files of `src` and never edit `crystal.php` directly.
+Before committing your code, run `composer check`: it builds and formats `crystal.php` (`composer build`) and runs the tests against it (`composer test`).
+The continuous integration fails when the committed `crystal.php` differs from the one built from `src`.
 
 Use .phpt extension to write tests.
 
