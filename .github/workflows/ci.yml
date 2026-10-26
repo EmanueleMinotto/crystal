@@ -16,7 +16,7 @@ jobs:
         runs-on: ubuntu-latest
         name: crystal.php built from src
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
             - uses: shivammathur/setup-php@v2
               with:
@@ -55,7 +55,7 @@ jobs:
 
         name: PHP ${{ matrix.php }}
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
             - uses: shivammathur/setup-php@v2
               with:
@@ -107,7 +107,7 @@ jobs:
 
         name: MySQL, PostgreSQL, Redis, Memcached, APCu disabled
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
             - uses: shivammathur/setup-php@v2
               with:
