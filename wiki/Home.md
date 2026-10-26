@@ -1,47 +1,39 @@
-Welcome to the crystal wiki!
-
-This is a PHP (7.0+) microframework based on [anonymous functions](http://php.net/manual/en/functions.anonymous.php) and [anonymous classes](https://www.php.net/manual/en/language.oop5.anonymous.php).
+Crystal is a PHP (7.0+) microframework in a single file, without dependencies: copy `crystal.php` next to your `index.php` and start writing routes.
 
 ```php
 <?php
 
-$mf = require_once('crystal.php');
+$mf = require __DIR__.'/crystal.php';
 
-$mf('/', function () {
+$mf->get('/', function () {
     echo 'Hello World!';
+});
+
+$mf->get('/api/users/{id:[0-9]+}', function (int $id, $database) {
+    return $database->read('users', $id); // arrays are JSON responses
 });
 ```
 
-`$mf` is an instance of an invokable anonymous class, so it can be used anywhere a [`callable`](http://php.net/manual/en/language.types.callable.php) is accepted (but it isn't a `Closure`).
+`$mf` defines the routes (`$mf->get()`, `$mf->post()`, ...) and returns the services (`$mf('database')`, `$mf('auth')`, ...), which the callbacks can also receive as parameters.
+
+## Where to start
+
+-   [[Getting Started]]: from an empty directory to a small application with a JSON API, a database and an HTML page
+-   [[Cookbook]]: complete applications to copy, like a JSON API, a website with login and a contact form
+-   [[Routing]]: paths, parameters, methods, groups and named routes
 
 ## Features
 
--   requested URLs matched using regular expressions
--   request methods (matches using regular expressions too)
--   differenced [FIFO](http://en.wikipedia.org/wiki/FIFO) [queues](http://en.wikipedia.org/wiki/Queue_%28abstract_data_type%29) for each `$priority`
--   command line usage
--   integrated [[Dependency Injection]] (based on [PSR-11](https://www.php-fig.org/psr/psr-11/)) and settings system
--   named patterns and placeholders, named routes with URL generation, groups of routes and `get`, `post`, `put`, `patch`, `delete` shortcuts (see [[CGI Usage]])
--   services injected in the route callbacks by parameter name or class, arrays returned as JSON responses
--   an [[Autoloader]] based on the [PSR-0](https://www.php-fig.org/psr/psr-0/) standard
--   a [[Template Engine]]
--   a [[Logger]] based on [PSR-3](https://www.php-fig.org/psr/psr-3/)
--   a [[Database]] interaction system
--   database [[Migrations]] and [[Pagination]] with the `Link` header
--   a [[Cache]] system with APCu, array, filesystem, database, Memcached and Redis drivers, namespaces and chains
--   a [[Mailer]] to send emails using `mail()` or SMTP
--   a [[Configuration]] system with `.env` files support
--   an [[Event Listener]] to listen and dispatch events
--   [[Authentication]] with password hashing, protected routes, gates, throttling, remember-me and API tokens
--   [[Request Response]] objects (with `201`, `202`, `204` helpers and `ETag` with 304 responses) and [[Middleware]]
--   [[Validation]] of the input data, nested fields included
--   [[Errors]] handling with error pages, 404 and 405 responses
--   [[CORS]] headers and automatic `OPTIONS` (preflight) responses
--   [[Rate Limiting]] of routes and actions, with 429 responses
--   [[Session]] with hardened cookies and [[CSRF]] protection
--   **no external dependencies, just a single PHP file!**
+| Area | Pages |
+| --- | --- |
+| Routing and HTTP | [[Routing]] (regular expressions, placeholders, groups, named routes), [[Request Response]] (JSON, `201`/`204` helpers, `ETag`), [[Middleware]], [[Errors]] (error pages, 404, 405, Problem Details), [[CORS]], [[CLI Usage]] |
+| Services | [[Dependency Injection]] (PSR-11-like container with autowiring) and settings, [[Configuration]] (`.env` files), [[Event Listener]], [[Logger]] (PSR-3-like), [[Autoloader]] (PSR-0) |
+| Data | [[Database]] (PDO CRUD helpers, transactions), [[Migrations]], [[Pagination]] (with the `Link` header), [[Validation]] (nested fields too), [[Cache]] (APCu, array, filesystem, database, Memcached, Redis, chains) |
+| Pages and emails | [[Template Engine]] (plain PHP, layouts and sections), [[Mailer]] (`mail()` or SMTP) |
+| Security | [[Session]] (hardened cookies), [[Authentication]] (password hashing, gates, throttling, remember-me, API tokens), [[CSRF]], [[Rate Limiting]] |
 
 ## Choosing crystal
 
--   [[Comparison]] with Slim, Flight, Fat-Free, Leaf, Laravel, Symfony and Laminas/Mezzio
 -   [[When to use crystal]]: good and bad fits, and how to use it on InfinityFree and other free or limited hostings
+-   [[Comparison]] with Slim, Flight, Fat-Free, Leaf, Laravel, Symfony and Laminas/Mezzio
+-   [[Webserver Configuration]] for Apache, nginx, IIS, lighttpd and the PHP built-in webserver

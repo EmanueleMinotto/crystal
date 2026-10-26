@@ -1,32 +1,56 @@
-The cache is provided as a [PSR-16](https://www.php-fig.org/psr/psr-16/)-like object supporting multiple storage backends (drivers).
-
-## Accessing the Cache
-
-The cache is available via the main callable, just like the logger:
+The `cache` service stores values for a while, to avoid repeating slow operations like queries or calls to other APIs.
+It's a [PSR-16](https://www.php-fig.org/psr/psr-16/)-like object supporting many storage backends (drivers).
 
 ```php
-$mf(function () use ($mf) {
-    $cache = $mf('cache');
+$mf('cache')::setDriver('filename', __DIR__.'/cache');
 
-    // Store a value
-    $cache->set('user_42', ['name' => 'Alice'], 600);
+$mf->get('/api/stats', function ($cache, $database) {
+    $stats = $cache->get('stats');
 
-    // Retrieve a value
-    $user = $cache->get('user_42');
-
-    // Check if a key exists
-    if ($cache->has('user_42')) {
-        // ...
+    if (is_null($stats)) {
+        $stats = $database->query('SELECT status, COUNT(*) AS total FROM orders GROUP BY status');
+        $cache->set('stats', $stats, 300); // for 5 minutes
     }
 
-    // Delete a value
-    $cache->delete('user_42');
+    return $stats;
+});
+```
+
+## Basic operations
+
+```php
+$cache = $mf('cache');
+
+$cache->set('user_42', ['name' => 'Alice'], 600); // time-to-live in seconds, forever when null
+$cache->get('user_42');                           // ['name' => 'Alice'], null when missing or expired
+$cache->get('user_43', []);                       // [], the default value
+$cache->has('user_42');                           // true
+$cache->delete('user_42');
+$cache->clear();                                  // every value
+
+$cache->setMultiple(['a' => 1, 'b' => 2], 60);
+$cache->getMultiple(['a', 'b']);                  // ['a' => 1, 'b' => 2]
+$cache->deleteMultiple(['a', 'b']);
+```
+
+Keys are non-empty strings matching `/^[A-Za-z0-9_.-]+$/`, values can be any serializable PHP value.
+
+### Removing outdated values
+
+Delete the cached value when the data changes, so the next request reads the new one:
+
+```php
+$mf->post('/api/orders', function ($request, $database, $cache) {
+    $id = $database->create('orders', $request->validate(['status' => ['required']]));
+    $cache->delete('stats');
+
+    return ['id' => $id];
 });
 ```
 
 ## Choosing a Driver
 
-Call `setDriver` before the first cache operation. If no driver is set, APCu is used by default.
+Call `setDriver` once, at the beginning of `index.php`. If no driver is set, APCu is used by default.
 
 ### APCu (default)
 
@@ -143,20 +167,6 @@ $cache::setDriver($myDriver);
 
 To support [namespaces](#namespaces) `clear()`, a custom driver can also implement `clearPrefix($prefix)`, deleting every key starting with `$prefix`.
 
-## Basic Operations
-
-The cache object supports the following methods:
-
--   `get($key, $default = null)`: Retrieve a value by key. Returns `$default` if the key does not exist.
--   `set($key, $value, $ttl = null)`: Store a value by key, with optional time-to-live (in seconds).
--   `delete($key)`: Remove a value by key.
--   `clear()`: Clear all cache entries.
--   `getMultiple($keys, $default = null)`: Retrieve multiple values by an iterable of keys.
--   `setMultiple($values, $ttl = null)`: Store multiple key-value pairs.
--   `deleteMultiple($keys)`: Remove multiple keys.
--   `has($key)`: Check if a key exists.
--   `withNamespace($namespace)`: Get a cache instance isolated in a sub namespace.
-
 ## Namespaces
 
 `withNamespace($namespace)` returns a cache instance whose keys are isolated in a namespace, sharing the same driver. Namespaces can be nested.
@@ -179,11 +189,6 @@ $users->clear();
 Namespaces follow the same rules as keys. Internally keys are prefixed by the namespaces separated by `:` (e.g. `users:admins:name`), a character not allowed in keys, so they can't collide.
 
 `clear()` on a namespace is supported by every built-in driver. Memcached can't list its keys, so its namespaces are versioned: clearing a namespace changes its version and the previous keys become unreachable, until memcached evicts them. Custom drivers need a `clearPrefix` method, otherwise a `\RuntimeException` is thrown.
-
-## Key Requirements
-
--   Keys must be non-empty strings matching `/^[A-Za-z0-9_.-]+$/`.
--   Values can be any serializable PHP value.
 
 ## Notes
 

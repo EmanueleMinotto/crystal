@@ -124,13 +124,29 @@ PHP
 ---
 
 PHP ships with a built-in webserver for development. This server allows you to run crystal without any configuration.
-Assuming your front controller is at `web/index.php`, you can start the server from the command-line with this command:
+From the directory of `index.php`:
+
+``` bash
+$ php -S localhost:8080 index.php
+```
+
+Now the application should be running at `http://localhost:8080`.
+
+With a router script like `index.php` every request reaches it, files like CSS and images included.
+To serve the existing files directly, add this at the beginning of `index.php`:
+
+```php
+// built-in webserver: existing files are served as they are
+if ('cli-server' === PHP_SAPI && is_file(__DIR__.parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH))) {
+    return false;
+}
+```
+
+With the front controller in a subdirectory, like `web/index.php`, set the document root with `-t`:
 
 ``` bash
 $ php -S localhost:8080 -t web web/index.php
 ```
-
-Now the application should be running at `http://localhost:8080`.
 
 > **note**
 >

@@ -1,8 +1,8 @@
 Crystal validates input data with rules defined as arrays.
 
 ```php
-$mf('/users', function () use ($mf) {
-    $data = $mf('validator')->validate($mf('request')->input(), [
+$mf->post('/users', function ($request) {
+    $data = $request->validate([
         'email' => ['required', 'email', 'max' => 255],
         'name' => ['required', 'string', 'between' => [2, 100]],
         'age' => ['integer', 'min' => 18],
@@ -11,27 +11,33 @@ $mf('/users', function () use ($mf) {
     ]);
 
     // $data contains only the validated fields
-}, 'POST');
+});
 ```
 
 Rules without parameters are values (`'required'`), rules with parameters are keys (`'max' => 255`).
 
 ## Validating the request
 
-`$mf('request')->validate($rules, $messages)` validates the query string and the body values (from a form or a JSON object) together, the body values take precedence:
+`$request->validate($rules, $messages)` validates the query string and the body values (from a form or a JSON object) together, the body values take precedence:
 
 ```php
-$mf('/api/users', function () use ($mf) {
-    $data = $mf('request')->validate([
+$mf->post('/api/users', function ($request, $response) {
+    $data = $request->validate([
         'email' => ['required', 'email'],
         'name' => ['required', 'string', 'max' => 100],
     ]);
 
-    return $mf('response')->json(['user' => $data], 201);
-}, 'POST');
+    return $response->json(['user' => $data], 201);
+});
 ```
 
-It's the same as `$mf('validator')->validate(array_replace($request->query(), $request->input()), $rules, $messages)`, but a malformed JSON body throws an exception with status code 400 (a 400 response with the [[Errors]] handling enabled) instead of being validated as an empty body.
+Any array can be validated with the `validator` service:
+
+```php
+$data = $mf('validator')->validate(['email' => 'alice@example.com'], ['email' => ['required', 'email']]);
+```
+
+`$request->validate()` is the same as `$mf('validator')->validate(array_replace($request->query(), $request->input()), $rules, $messages)`, but a malformed JSON body throws an exception with status code 400 (a 400 response with the [[Errors]] handling enabled) instead of being validated as an empty body.
 
 ## Results
 
@@ -44,19 +50,34 @@ When the data isn't valid, it throws an exception with status code 422: with the
 
 The errors of the exception are available with `getErrors()`.
 
-`check()` returns the errors instead of throwing an exception, useful for HTML forms:
+`check()` returns the errors instead of throwing an exception, useful for HTML forms showing the errors next to the fields:
 
 ```php
-$errors = $mf('validator')->check($request->input(), $rules);
+$rules = ['email' => ['required', 'email'], 'message' => ['required', 'max' => 1000]];
 
-if (!empty($errors)) {
-    return $mf('response')->setStatus(422)->setBody($mf('template')->render('form.html.php', [
-        'errors' => $errors, // ['email' => ['The email field is required.']]
-    ]));
-}
+$mf->post('/contact', function ($request, $response, $validator, $template) use ($rules) {
+    $errors = $validator->check($request->input(), $rules);
+
+    if (!empty($errors)) {
+        // the form again, with the errors and the values sent
+        return $response->setStatus(422)->setBody($template->render(__DIR__.'/templates/contact.html.php', [
+            'errors' => $errors, // ['email' => ['The email field is required.']]
+            'old' => $request->input(),
+        ]));
+    }
+
+    // send the message...
+});
 ```
 
-All the errors of each field are returned.
+```html
+<input name="email" value="<?php echo $this->e($old['email'] ?? ''); ?>">
+<?php foreach ($errors['email'] ?? [] as $error): ?>
+    <p class="error"><?php echo $this->e($error); ?></p>
+<?php endforeach; ?>
+```
+
+All the errors of each field are returned, see the [contact form](Cookbook-Contact-Form) of the [[Cookbook]] for a complete example.
 
 ## Empty fields
 
@@ -83,9 +104,11 @@ So optional fields don't need other rules.
 Callables can be used as inline rules, they receive the value, the field name and the data, and return `true`, `false` or an error message:
 
 ```php
-'password' => ['required', function ($value, $field, $data) {
-    return $value !== $data['username'] ? true : 'The :field field must differ from the username.';
-}],
+$rules = [
+    'password' => ['required', function ($value, $field, $data) {
+        return $value !== $data['username'] ? true : 'The :field field must differ from the username.';
+    }],
+];
 ```
 
 Reusable rules receive the value, the parameter, the field name and the data:

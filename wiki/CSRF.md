@@ -1,49 +1,75 @@
-Crystal protects forms from [Cross-Site Request Forgery](https://owasp.org/www-community/attacks/csrf) using a random token stored in the [[Session]].
-
-## Forms
+The `csrf` service protects forms from [Cross-Site Request Forgery](https://owasp.org/www-community/attacks/csrf): another website can't send a form to your application on behalf of your users, because it doesn't know the random token stored in their [[Session]].
 
 ```php
-$csrf = $mf('csrf');
-
-$mf('/posts/new', function () use ($csrf) {
+$mf->get('/posts/new', function ($csrf) {
     echo '<form method="post" action="/posts">';
     echo $csrf->field(); // <input type="hidden" name="_token" value="...">
-    echo '<button>Save</button></form>';
+    echo '<input name="title"><button>Save</button>';
+    echo '</form>';
 });
-```
 
-For JavaScript requests the token can be sent in the `X-CSRF-Token` header:
+$mf->post('/posts', $mf('csrf')->protect(function ($request, $database) {
+    $database->create('posts', $request->validate(['title' => ['required', 'string']]));
 
-```php
-echo '<meta name="csrf-token" content="' . $csrf->token() . '">';
+    echo 'Saved!';
+}));
 ```
 
 ## Protecting routes
 
-`protect` wraps a route callback, invoked only when the token is valid (otherwise the status code is 403):
+`protect()` wraps a route callback, invoked only when the token is valid, otherwise the status code is 403:
 
 ```php
-$mf('/posts', $csrf->protect(function () {
-    // save the post
-}), 'POST');
+$csrf = $mf('csrf');
+
+$mf->post('/posts', $csrf->protect($save));
 
 // with a custom response
-$mf('/posts', $csrf->protect($callback, function () {
+$mf->post('/posts', $csrf->protect($save, function () {
     echo 'The page expired, please retry.';
-}), 'POST');
+}));
 
-// together with authentication
-$mf('/posts/(?P<id>[0-9]+)', $csrf->protect($auth->protect(function ($id) {
-    // update the post
-})), 'POST');
+// together with the authentication
+$mf->post('/posts/{id:[0-9]+}', $csrf->protect($mf('auth')->protect($update)));
 ```
-
-Safe methods (`GET`, `HEAD`, `OPTIONS`) and requests authenticated by a bearer token (see [[Authentication]]) aren't checked.
 
 With [[Middleware]], `$csrf->middleware()` returns a 403 response for invalid tokens:
 
 ```php
-$mf('/posts', $mf('middleware')->wrap($callback, $csrf->middleware(), $auth->middleware()), 'POST');
+$mf->post('/posts', $mf('middleware')->wrap($save, $mf('csrf')->middleware(), $mf('auth')->middleware()));
+```
+
+Safe methods (`GET`, `HEAD`, `OPTIONS`) and requests authenticated by a bearer token (see [[Authentication]]) aren't checked.
+
+## In templates
+
+```html
+<form method="post" action="/comments">
+    <?php echo $csrf->field(); ?>
+    <textarea name="text"></textarea>
+    <button>Send</button>
+</form>
+```
+
+Pass the service to the template, e.g. `$template->render($file, ['csrf' => $csrf])`.
+
+## JavaScript requests
+
+The token can be sent in the `X-CSRF-Token` header:
+
+```html
+<meta name="csrf-token" content="<?php echo $this->e($csrf->token()); ?>">
+
+<script>
+fetch('/api/comments', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content,
+    },
+    body: JSON.stringify({text: 'Hello'}),
+});
+</script>
 ```
 
 ## Manual checks
@@ -51,6 +77,7 @@ $mf('/posts', $mf('middleware')->wrap($callback, $csrf->middleware(), $auth->mid
 ```php
 $csrf->check();         // token read from the `_token` field or the `X-CSRF-Token` header
 $csrf->check($token);   // explicit token
+$csrf->token();         // the token of the session
 $csrf->regenerate();    // new token, done automatically on login and logout
 $csrf->setFieldName('csrf_token');
 ```
