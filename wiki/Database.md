@@ -80,13 +80,11 @@ The conditions of `select`, `read`, `update` and `delete`:
 | `['views > ?' => 100]` | `(views > 100)` |
 | `['status = ? OR status = ?' => ['draft', 'review']]` | `(status = 'draft' OR status = 'review')` |
 | `['title LIKE ?' => '%php%', 'views > ?' => 100]` | `(title LIKE '%php%') AND (views > 100)` |
+| `['status' => 'published', 'views > ?' => 100]` | `status = 'published' AND (views > 100)` |
+| `['email = :email' => ['email' => 'alice@example.com']]` | `(email = 'alice@example.com')`, named placeholders |
 
 Values are always passed as query parameters, so they're safe.
-To combine a column (`'status' => ...`) with a SQL condition (`'views > ?' => ...`), write both as SQL conditions:
-
-```php
-$database->select('posts', '*', ['status = ?' => 'published', 'views > ?' => 100]);
-```
+The SQL conditions of a call can use positional (`?`) or named (`:email`) placeholders, not both: combining them throws an `InvalidArgumentException`.
 
 ## Custom queries
 

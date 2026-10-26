@@ -3196,11 +3196,28 @@ return new class () {
                         // ['bar' => 'foo', 'lorem' => 'ipsum'] => `bar` = "foo" AND `lorem` = "ipsum"
                         $sql = '';
                         $params = [];
+                        $positional = false;
+                        $named = false;
+
+                        // PDO can't combine named and positional placeholders (SQLite binds the
+                        // positional values to the named placeholders), so the conditions on the
+                        // columns use the placeholders of the SQL conditions
+                        foreach ($value as $k => $v) {
+                            if (!preg_match('/^[a-zA-Z0-9\_]+$/', $k)) {
+                                $positional = $positional || is_scalar($v) || (is_array($v) && !empty($v) && array_is_list($v));
+                                $named = $named || (is_array($v) && !array_is_list($v));
+                            }
+                        }
+
+                        if ($positional && $named) {
+                            throw new InvalidArgumentException('Named and positional placeholders can\'t be combined in the same conditions.');
+                        }
 
                         foreach ($value as $k => $v) {
                             if (preg_match('/^[a-zA-Z0-9\_]+$/', $k)) {
-                                $v = [$k => $v];
-                                $k = sprintf('%s = :%s', $this->quoteIdentifier($k), $k);
+                                $column = $k;
+                                $k = sprintf('%s = %s', $this->quoteIdentifier($column), $positional ? '?' : ':'.$column);
+                                $v = $positional ? [$v] : [$column => $v];
                             }
 
                             if (!empty($sql)) {
