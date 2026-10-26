@@ -1,0 +1,13 @@
+version: 2
+updates:
+    # actions used by the workflows
+    - package-ecosystem: github-actions
+      directory: /
+      schedule:
+          interval: monthly
+
+    # development tools: php-cs-fixer is pinned, so the formatting changes only with these updates
+    - package-ecosystem: composer
+      directory: /
+      schedule:
+          interval: monthly
