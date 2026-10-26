@@ -155,6 +155,13 @@ $router->url('posts.show', ['id' => 42, 'page' => 2]); // "/posts/42?page=2"
 $router->has('posts.show');                            // true
 ```
 
+On PHP 8, named arguments skip the priority:
+
+```php
+// PHP 8.0+
+$mf->get('/posts/{id:[0-9]+}', $show, name: 'posts.show');
+```
+
 -   the base path of the application (the directory of `index.php`) is added
 -   parameters not used by the route are added to the query string
 -   values are URL encoded and must match their pattern, otherwise an `InvalidArgumentException` is thrown
@@ -201,6 +208,24 @@ $mf->get('/hello(.*)', function () {
 
 -   a callback returning a response (or an array) stops the next ones, see [[Request Response]]
 -   [`exit()`](https://www.php.net/manual/en/function.exit.php) stops the next callbacks too
+
+### Only the first route
+
+With the first match mode only the first matching route (by priority, then in the order they're defined) is invoked, like in most frameworks:
+
+```php
+$mf('router')->firstMatch();
+
+$mf->get('/users/new', function () {
+    echo 'New user form';
+});
+
+$mf->get('/users/{id}', function ($id) {
+    echo 'User '.$id;
+});
+
+// GET /users/new → New user form (without the first match mode: New user formUser new)
+```
 
 ### Priorities
 

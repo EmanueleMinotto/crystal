@@ -55,7 +55,8 @@ return new class () {
 
     /**
      * State of the routing: priorities still to be matched, whether a route
-     * matched and the methods of routes matching only the path.
+     * matched, the methods of routes matching only the path and whether a
+     * route callback was invoked (used by the first match mode).
      *
      * @var array
      */
@@ -64,6 +65,7 @@ return new class () {
         'matched' => false,
         'methods' => [],
         'finalizer' => false,
+        'invoked' => false,
     ];
 
     public function __construct()
@@ -365,7 +367,7 @@ return new class () {
          *
          * @return void
          */
-        $dispatch = function ($cb, array $args, array $params, array $parameters = []) use (&$deps, &$responded, $arguments) {
+        $dispatch = function ($cb, array $args, array $params, array $parameters = []) use (&$deps, &$responded, &$routing, $arguments) {
             // the output of all the callbacks is buffered until the end of
             // the script, so a response can set status and headers after it
             static $level = null;
@@ -378,6 +380,17 @@ return new class () {
 
             if ($responded || (is_object($errors) && method_exists($errors, 'hasSent') && $errors->hasSent())) {
                 return;
+            }
+
+            // with the first match mode, a route already invoked skips the next ones
+            $router = $deps['router'] ?? null;
+
+            if (is_object($router) && method_exists($router, 'isFirstMatch') && $router->isFirstMatch()) {
+                if (!empty($routing['invoked'])) {
+                    return;
+                }
+
+                $routing['invoked'] = true;
             }
 
             if (!empty($deps['request']) && is_object($deps['request']) && method_exists($deps['request'], 'setParams')) {

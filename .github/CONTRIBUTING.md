@@ -18,5 +18,5 @@ The continuous integration fails when the committed `crystal.php` differs from t
 
 Use .phpt extension to write tests.
 
-The wiki is tested too (`tests/docs`): every PHP code block must have a valid PHP 7.0 syntax, and the code blocks preceded by a line with their path (like `` `index.php`: ``) are extracted and run by the tests of their page.
+The wiki is tested too (`tests/docs`): every PHP code block must have a valid PHP 7.0 syntax (blocks starting with `// PHP 8.0+` are checked from PHP 8), and the code blocks preceded by a line with their path (like `` `index.php`: ``) are extracted and run by the tests of their page.
 When a change affects the documented behavior, update the wiki and its tests together.

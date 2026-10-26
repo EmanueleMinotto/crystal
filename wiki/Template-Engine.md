@@ -23,6 +23,25 @@ $mf->get('/hello/{name}', function ($name, $template) {
 `render($file, $data)` returns the output as a string: the keys of `$data` are the variables of the template, and `$this` is the template service.
 Files are found by their path, or in the directories of the [`include_path`](https://www.php.net/manual/en/ini.core.php#ini.include-path).
 
+## Directory and shared data
+
+`setDirectory()` finds the templates with a relative path in a directory, the `.html.php` extension can be omitted.
+`share()` makes values available in every template:
+
+```php
+$template = $mf('template');
+$template->setDirectory(__DIR__.'/templates');
+$template->share('csrf', $mf('csrf'));
+$template->share(['site' => 'My blog', 'year' => date('Y')]);
+
+$mf->get('/hello/{name}', function ($name, $template) {
+    echo $template->render('hello', ['name' => $name]); // templates/hello.html.php
+});
+```
+
+Values passed to `render()` with the same name take precedence over the shared ones.
+Layouts and partials are found in the directory too, absolute paths are used as they are.
+
 ## Escaping
 
 **Always escape the values** printed in the HTML with `$this->e()`, so they can't add tags or scripts ([XSS](https://owasp.org/www-community/attacks/xss/)):

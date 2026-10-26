@@ -15,6 +15,11 @@ foreach (glob(__DIR__.'/../../wiki/*.md') as $path) {
             continue;
         }
 
+        // examples of PHP 8 features, like named arguments
+        if (PHP_VERSION_ID < 80000 && 0 === strpos($block['code'], '// PHP 8.0+')) {
+            continue;
+        }
+
         $code = 0 === strpos($block['code'], '<?php') ? $block['code'] : "<?php\n".$block['code'];
 
         try {

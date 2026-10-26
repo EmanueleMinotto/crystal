@@ -158,7 +158,8 @@ return new class () {
 
     /**
      * State of the routing: priorities still to be matched, whether a route
-     * matched and the methods of routes matching only the path.
+     * matched, the methods of routes matching only the path and whether a
+     * route callback was invoked (used by the first match mode).
      *
      * @var array
      */
@@ -167,6 +168,7 @@ return new class () {
         'matched' => false,
         'methods' => [],
         'finalizer' => false,
+        'invoked' => false,
     ];
 
     public function __construct()
@@ -287,6 +289,13 @@ return new class () {
             private $throttle;
 
             /**
+             * Login page of the guests of protected routes, null for a 401 response.
+             *
+             * @var string|null
+             */
+            private $loginUrl;
+
+            /**
              * @param array $deps Dynamic set of dependencies.
              */
             public function __construct(array &$deps = [])
@@ -370,6 +379,18 @@ return new class () {
             public function setSessionKey(string $key)
             {
                 $this->sessionKey = $key;
+            }
+
+            /**
+             * Send the guests of protected routes (`protect()` without `$onFail` and
+             * `middleware()`) to the login page, instead of a 401 response.
+             *
+             * Requests asking for JSON or with a bearer token still receive a 401
+             * response, the requested URL of GET requests is used by `intended()`.
+             */
+            public function setLoginUrl(string $url)
+            {
+                $this->loginUrl = $url;
             }
 
             /**
@@ -750,6 +771,12 @@ return new class () {
                             return call_user_func_array($this->onFail, $args);
                         }
 
+                        $redirect = 401 === $status ? $this->auth->loginRedirect() : null;
+
+                        if (!is_null($redirect)) {
+                            return $redirect;
+                        }
+
                         http_response_code($status);
                     }
 
@@ -781,7 +808,7 @@ return new class () {
 
                 return function ($request, callable $next) use ($ability) {
                     if (!$this->check()) {
-                        return $this->service('response')->setStatus(401);
+                        return $this->loginRedirect() ?: $this->service('response')->setStatus(401);
                     }
 
                     if (!is_null($ability) && !$this->can($ability, $request)) {
@@ -790,6 +817,51 @@ return new class () {
 
                     return $next();
                 };
+            }
+
+            /**
+             * Response sending a guest to the login page set with `setLoginUrl()`,
+             * null when it isn't set or the request asks for JSON or has a bearer token.
+             *
+             * @return object|null
+             */
+            public function loginRedirect()
+            {
+                if (is_null($this->loginUrl) || !is_null($this->bearerToken())) {
+                    return null;
+                }
+
+                $request = $this->service('request');
+
+                if (false !== stripos((string) $request->header('Accept', ''), 'json') || $request->isJson()) {
+                    return null;
+                }
+
+                if ('GET' === $request->method() && !empty($_SERVER['REQUEST_URI'])) {
+                    $this->service('session')->set('crystal_intended', $_SERVER['REQUEST_URI']);
+                }
+
+                return $this->service('response')->redirect($this->loginUrl);
+            }
+
+            /**
+             * Response sending the user to the page requested before the login
+             * (see `setLoginUrl()`), or to the default URL.
+             *
+             * @return object
+             */
+            public function intended(string $default = '/')
+            {
+                $session = $this->service('session');
+                $url = $session->get('crystal_intended');
+                $session->remove('crystal_intended');
+
+                // only paths of this website, "//example.com" and "/\example.com" would be another one
+                if (!is_string($url) || !preg_match('#^/(?![/\\\\])#', $url)) {
+                    $url = $default;
+                }
+
+                return $this->service('response')->redirect($url);
             }
 
             // === INTERNALS ===
@@ -1847,6 +1919,34 @@ return new class () {
             }
 
             /**
+             * Returns the cached value of a key or, when it's missing, stores and
+             * returns the result of the callback.
+             *
+             *   $stats = $cache->remember('stats', 300, function () { ... });
+             *
+             * @param  string                    $key      Cache key
+             * @param  int|null                  $ttl      Time-to-live in seconds, forever when null
+             * @param  callable                  $callback Function computing the value
+             * @return mixed                     Cached or computed value
+             * @throws \InvalidArgumentException If key is invalid
+             */
+            public function remember($key, $ttl, callable $callback)
+            {
+                // a default value that can't be cached, so null values are cached too
+                $missing = new \stdClass();
+                $value = $this->get($key, $missing);
+
+                if ($value !== $missing) {
+                    return $value;
+                }
+
+                $value = $callback();
+                $this->set($key, $value, $ttl);
+
+                return $value;
+            }
+
+            /**
              * Stores a value in the cache under the given key.
              *
              * @param  string                    $key   Cache key
@@ -2459,6 +2559,28 @@ return new class () {
             public function set(string $id, $value)
             {
                 static::$deps[$id] = $value;
+            }
+
+            /**
+             * Define a service created on first use, then shared: every call returns
+             * the same instance.
+             *
+             * @param string   $id      Identifier of the service.
+             * @param callable $factory Function creating the service.
+             */
+            public function share(string $id, callable $factory)
+            {
+                $created = false;
+                $instance = null;
+
+                $this->set($id, function () use ($factory, &$created, &$instance) {
+                    if (!$created) {
+                        $instance = $factory();
+                        $created = true;
+                    }
+
+                    return $instance;
+                });
             }
 
             public function alias(string $alias, string $id)
@@ -5339,6 +5461,13 @@ return new class () {
             private $attributes = [];
 
             /**
+             * Addresses (or CIDR ranges) of the proxies trusted for the X-Forwarded-For header.
+             *
+             * @var string[]
+             */
+            private $proxies = [];
+
+            /**
              * @param array $deps Dynamic set of dependencies.
              */
             public function __construct(array &$deps = [])
@@ -5376,7 +5505,42 @@ return new class () {
              */
             public function ip()
             {
-                return $_SERVER['REMOTE_ADDR'] ?? null;
+                $ip = $_SERVER['REMOTE_ADDR'] ?? null;
+
+                if (is_null($ip) || !$this->isTrustedProxy($ip)) {
+                    return $ip;
+                }
+
+                // the closest address not belonging to a trusted proxy, the first
+                // ones can be sent by the client
+                $forwarded = array_filter(array_map('trim', explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '')), 'strlen');
+
+                while (!empty($forwarded)) {
+                    $address = array_pop($forwarded);
+
+                    if (false === filter_var($address, FILTER_VALIDATE_IP)) {
+                        break;
+                    }
+
+                    $ip = $address;
+
+                    if (!$this->isTrustedProxy($address)) {
+                        break;
+                    }
+                }
+
+                return $ip;
+            }
+
+            /**
+             * Trust the X-Forwarded-For header sent by these proxies (like a load
+             * balancer or Cloudflare), so `ip()` returns the address of the client.
+             *
+             * @param string[] $proxies Addresses or CIDR ranges, like "10.0.0.0/8"
+             */
+            public function setTrustedProxies(array $proxies)
+            {
+                $this->proxies = $proxies;
             }
 
             /**
@@ -5412,6 +5576,60 @@ return new class () {
                 }
 
                 return is_null($key) ? $input : ($input[$key] ?? $default);
+            }
+
+            /**
+             * Whether the query string or the body has a value.
+             */
+            public function has(string $key): bool
+            {
+                return array_key_exists($key, $this->values());
+            }
+
+            /**
+             * Some values of the query string and of the body, the missing ones are skipped.
+             *
+             * @param string[] $keys
+             */
+            public function only(array $keys): array
+            {
+                return array_intersect_key($this->values(), array_flip($keys));
+            }
+
+            /**
+             * Value of the query string or of the body as a string, the default
+             * value when it's missing or it isn't a scalar (like `?email[]=...`).
+             */
+            public function string(string $key, string $default = ''): string
+            {
+                $value = $this->values()[$key] ?? null;
+
+                return is_scalar($value) ? (string) $value : $default;
+            }
+
+            /**
+             * Value of the query string or of the body as an integer, the default
+             * value when it's missing or it isn't an integer.
+             */
+            public function integer(string $key, int $default = 0): int
+            {
+                $value = $this->values()[$key] ?? null;
+                $value = is_scalar($value) ? filter_var($value, FILTER_VALIDATE_INT) : false;
+
+                return false === $value ? $default : $value;
+            }
+
+            /**
+             * Value of the query string or of the body as a boolean: "1", "true",
+             * "on" and "yes" are true, "0", "false", "off", "no" and "" are false,
+             * other values (and missing ones) are the default value.
+             */
+            public function boolean(string $key, bool $default = false): bool
+            {
+                $value = $this->values()[$key] ?? null;
+                $value = is_scalar($value) ? filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) : null;
+
+                return is_null($value) ? $default : $value;
             }
 
             /**
@@ -5546,6 +5764,55 @@ return new class () {
             public function setAttribute(string $name, $value)
             {
                 $this->attributes[$name] = $value;
+            }
+
+            /**
+             * Values of the query string and of the body, which take precedence.
+             */
+            private function values(): array
+            {
+                return array_replace($this->query(), $this->input());
+            }
+
+            /**
+             * Whether an address belongs to the trusted proxies.
+             */
+            private function isTrustedProxy(string $ip): bool
+            {
+                if (false === filter_var($ip, FILTER_VALIDATE_IP)) {
+                    return false;
+                }
+
+                $address = inet_pton($ip);
+
+                foreach ($this->proxies as $proxy) {
+                    $parts = explode('/', $proxy, 2);
+                    $network = false === filter_var($parts[0], FILTER_VALIDATE_IP) ? '' : inet_pton($parts[0]);
+
+                    if (strlen($network) !== strlen($address)) {
+                        continue;
+                    }
+
+                    $bits = isset($parts[1]) ? (int) $parts[1] : 8 * strlen($address);
+
+                    if ($bits < 0 || $bits > 8 * strlen($address)) {
+                        continue;
+                    }
+
+                    // whole bytes of the prefix, then the bits of the next byte
+                    $bytes = intdiv($bits, 8);
+                    $mask = (0xff << (8 - $bits % 8)) & 0xff;
+
+                    if (substr($address, 0, $bytes) !== substr($network, 0, $bytes)) {
+                        continue;
+                    }
+
+                    if (0 === $bits % 8 || (ord($address[$bytes]) & $mask) === (ord($network[$bytes]) & $mask)) {
+                        return true;
+                    }
+                }
+
+                return false;
             }
 
             /**
@@ -5951,6 +6218,13 @@ return new class () {
             private $routes = [];
 
             /**
+             * Whether only the first route matching a request is invoked.
+             *
+             * @var bool
+             */
+            private $firstMatch = false;
+
+            /**
              * @param array    $deps Dynamic set of dependencies.
              * @param callable $mf   The framework instance.
              */
@@ -5958,6 +6232,20 @@ return new class () {
             {
                 $this->deps = &$deps;
                 $this->mf = $mf;
+            }
+
+            /**
+             * Invoke only the first route matching the request (by priority, then
+             * in the order they're defined), instead of every matching route.
+             */
+            public function firstMatch(bool $enabled = true)
+            {
+                $this->firstMatch = $enabled;
+            }
+
+            public function isFirstMatch(): bool
+            {
+                return $this->firstMatch;
             }
 
             /**
@@ -6381,12 +6669,47 @@ return new class () {
             private $memory = [];
 
             /**
+             * Whether the flash values of the previous request have been aged.
+             *
+             * @var bool
+             */
+            private $aged = false;
+
+            /**
              * Start the session if needed.
              *
              * Cookies are `httponly`, `samesite=Lax` (unless configured differently)
              * and `secure` on HTTPS.
              */
             public function start(): bool
+            {
+                if (!$this->open()) {
+                    return false;
+                }
+
+                // flash values of the previous request are kept for this one only,
+                // sessions without flash values aren't changed
+                if (!$this->aged) {
+                    $this->aged = true;
+
+                    if (isset($_SESSION['crystal_flash'])) {
+                        $flash = ['old' => $_SESSION['crystal_flash']['new'] ?? [], 'new' => []];
+
+                        if (empty($flash['old'])) {
+                            unset($_SESSION['crystal_flash']);
+                        } else {
+                            $_SESSION['crystal_flash'] = $flash;
+                        }
+                    }
+                }
+
+                return true;
+            }
+
+            /**
+             * Start the native session with hardened cookies.
+             */
+            private function open(): bool
             {
                 if (PHP_SESSION_ACTIVE === session_status()) {
                     return true;
@@ -6484,6 +6807,58 @@ return new class () {
 
                 unset($_SESSION[$key]);
             }
+
+            /**
+             * Read a value and remove it.
+             */
+            public function pull(string $key, $default = null)
+            {
+                $value = $this->get($key, $default);
+                $this->remove($key);
+
+                return $value;
+            }
+
+            /**
+             * Store a value for the current and the next request, like a message
+             * shown after a redirect.
+             */
+            public function flash(string $key, $value)
+            {
+                $flash = $this->get('crystal_flash', []);
+                $flash['new'][$key] = $value;
+
+                $this->set('crystal_flash', $flash);
+            }
+
+            /**
+             * Read a value stored with `flash()` by this request or by the previous one.
+             */
+            public function getFlash(string $key, $default = null)
+            {
+                $flash = $this->get('crystal_flash', []);
+
+                return $flash['new'][$key] ?? $flash['old'][$key] ?? $default;
+            }
+
+            /**
+             * Store the values of a form for the next request, so the form can be
+             * shown again with them. Fields containing "password" aren't stored.
+             */
+            public function flashInput(array $input)
+            {
+                $this->flash('crystal:input', array_filter($input, function ($field) {
+                    return false === stripos((string) $field, 'password');
+                }, ARRAY_FILTER_USE_KEY));
+            }
+
+            /**
+             * Value of a form field stored with `flashInput()`.
+             */
+            public function old(string $field, $default = null)
+            {
+                return $this->getFlash('crystal:input', [])[$field] ?? $default;
+            }
         };
 
         unset($deps['template:escape']);
@@ -6518,12 +6893,50 @@ return new class () {
             private $depth = 0;
 
             /**
+             * Directory of the templates with a relative path, null to use the path as it is.
+             *
+             * @var string|null
+             */
+            private $directory;
+
+            /**
+             * Data available in every template.
+             *
+             * @var array
+             */
+            private $shared = [];
+
+            /**
+             * Find the templates with a relative path in a directory, the
+             * `.html.php` extension can be omitted.
+             */
+            public function setDirectory(string $directory)
+            {
+                $this->directory = rtrim($directory, '/\\');
+            }
+
+            /**
+             * Share data with every template, like the current user: values passed
+             * to `render()` with the same name take precedence.
+             *
+             * @param array|string $key   Name of the value, or values by name
+             * @param mixed        $value
+             */
+            public function share($key, $value = null)
+            {
+                $this->shared = is_array($key) ? array_replace($this->shared, $key) : array_replace($this->shared, [$key => $value]);
+            }
+
+            /**
              * Simple template engine to manipulate and render .php files.
              *
              * @return string
              */
             public function render(string $template, array $data = [])
             {
+                $template = $this->find($template);
+                $data += $this->shared;
+
                 if (false === stream_resolve_include_path($template)) {
                     throw new InvalidArgumentException(sprintf('Template "%s" not found.', $template));
                 }
@@ -6652,6 +7065,25 @@ return new class () {
                 }
 
                 return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            }
+
+            /**
+             * Path of a template, found in the directory when it's set.
+             */
+            private function find(string $template): string
+            {
+                // absolute paths (Unix, Windows and stream wrappers) are used as they are
+                if (is_null($this->directory) || preg_match('#^([/\\\\]|[a-zA-Z]:|[a-z][a-z0-9+.-]*://)#', $template)) {
+                    return $template;
+                }
+
+                foreach ([$template, $template.'.html.php'] as $name) {
+                    if (is_file($this->directory.'/'.$name)) {
+                        return $this->directory.'/'.$name;
+                    }
+                }
+
+                return $template;
             }
         };
 
@@ -7408,7 +7840,7 @@ return new class () {
          *
          * @return void
          */
-        $dispatch = function ($cb, array $args, array $params, array $parameters = []) use (&$deps, &$responded, $arguments) {
+        $dispatch = function ($cb, array $args, array $params, array $parameters = []) use (&$deps, &$responded, &$routing, $arguments) {
             // the output of all the callbacks is buffered until the end of
             // the script, so a response can set status and headers after it
             static $level = null;
@@ -7421,6 +7853,17 @@ return new class () {
 
             if ($responded || (is_object($errors) && method_exists($errors, 'hasSent') && $errors->hasSent())) {
                 return;
+            }
+
+            // with the first match mode, a route already invoked skips the next ones
+            $router = $deps['router'] ?? null;
+
+            if (is_object($router) && method_exists($router, 'isFirstMatch') && $router->isFirstMatch()) {
+                if (!empty($routing['invoked'])) {
+                    return;
+                }
+
+                $routing['invoked'] = true;
             }
 
             if (!empty($deps['request']) && is_object($deps['request']) && method_exists($deps['request'], 'setParams')) {

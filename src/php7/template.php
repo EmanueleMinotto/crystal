@@ -32,12 +32,50 @@ $deps['template'] = new class () {
     private $depth = 0;
 
     /**
+     * Directory of the templates with a relative path, null to use the path as it is.
+     *
+     * @var string|null
+     */
+    private $directory;
+
+    /**
+     * Data available in every template.
+     *
+     * @var array
+     */
+    private $shared = [];
+
+    /**
+     * Find the templates with a relative path in a directory, the
+     * `.html.php` extension can be omitted.
+     */
+    public function setDirectory(string $directory)
+    {
+        $this->directory = rtrim($directory, '/\\');
+    }
+
+    /**
+     * Share data with every template, like the current user: values passed
+     * to `render()` with the same name take precedence.
+     *
+     * @param array|string $key   Name of the value, or values by name
+     * @param mixed        $value
+     */
+    public function share($key, $value = null)
+    {
+        $this->shared = is_array($key) ? array_replace($this->shared, $key) : array_replace($this->shared, [$key => $value]);
+    }
+
+    /**
      * Simple template engine to manipulate and render .php files.
      *
      * @return string
      */
     public function render(string $template, array $data = [])
     {
+        $template = $this->find($template);
+        $data += $this->shared;
+
         if (false === stream_resolve_include_path($template)) {
             throw new InvalidArgumentException(sprintf('Template "%s" not found.', $template));
         }
@@ -166,5 +204,24 @@ $deps['template'] = new class () {
         }
 
         return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+
+    /**
+     * Path of a template, found in the directory when it's set.
+     */
+    private function find(string $template): string
+    {
+        // absolute paths (Unix, Windows and stream wrappers) are used as they are
+        if (is_null($this->directory) || preg_match('#^([/\\\\]|[a-zA-Z]:|[a-z][a-z0-9+.-]*://)#', $template)) {
+            return $template;
+        }
+
+        foreach ([$template, $template.'.html.php'] as $name) {
+            if (is_file($this->directory.'/'.$name)) {
+                return $this->directory.'/'.$name;
+            }
+        }
+
+        return $template;
     }
 };

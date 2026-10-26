@@ -37,6 +37,29 @@ $mf->post('/users/{id}', function ($request) {
 });
 ```
 
+### Typed values
+
+Values of the query string and of the body (the body takes precedence) can be read with their type: the default value is used when they're missing or invalid, like an array sent as `?email[]=...`.
+
+```php
+$request->string('email');            // "" when missing
+$request->integer('page', 1);         // 1 when missing or not an integer
+$request->boolean('newsletter');      // "1", "true", "on" and "yes" are true
+$request->has('coupon');              // true when sent, even if empty
+$request->only(['name', 'email']);    // the values sent of these fields
+```
+
+### Behind a proxy
+
+Behind a load balancer, a reverse proxy or Cloudflare, `REMOTE_ADDR` is the address of the proxy.
+Trust the `X-Forwarded-For` header of your proxies, so `ip()` returns the address of the client (used by the [[Rate Limiting]] and the throttling of the [[Authentication]] too):
+
+```php
+$mf('request')->setTrustedProxies(['10.0.0.0/8', '192.168.1.10']);
+```
+
+Only the addresses sent by the trusted proxies are used: the header is ignored for the other requests, so clients can't fake their address.
+
 ### Validating the input
 
 `validate()` returns the valid values of the query string and of the body, or stops the request with a 422 response (see [[Validation]]):

@@ -16,6 +16,20 @@ $mf->get('/api/stats', function ($cache, $database) {
 });
 ```
 
+## Computing a value once
+
+`remember($key, $ttl, $callback)` returns the cached value or, when it's missing, stores and returns the result of the callback:
+
+```php
+$mf->get('/api/stats', function ($cache, $database) {
+    return $cache->remember('stats', 300, function () use ($database) {
+        return $database->query('SELECT status, COUNT(*) AS total FROM orders GROUP BY status');
+    });
+});
+```
+
+`null` values are cached too, so the callback isn't invoked again until the value expires.
+
 ## Basic operations
 
 ```php

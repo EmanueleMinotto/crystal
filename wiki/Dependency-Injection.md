@@ -29,18 +29,20 @@ The name must be a valid PHP variable name, like `posts` or `mailer_queue`.
 ## Shared instances
 
 A factory is invoked each time the service is requested, so it returns a new object each time.
-To share one instance, pass the object itself, or keep it in a static variable:
+To share one instance, define the service with `share()`: the factory is invoked on first use, then every call returns the same object.
 
 ```php
-// created now
-$mf('clock', new DateTimeImmutable());
-
-// created on first use, then shared
-$mf('posts', function () use ($mf) {
-    static $posts;
-
-    return $posts ?: $posts = new PostRepository($mf('database'));
+$mf('container')->share('posts', function () use ($mf) {
+    return new PostRepository($mf('database'));
 });
+
+$mf('posts') === $mf('posts'); // true
+```
+
+An object created now can be passed directly:
+
+```php
+$mf('clock', new DateTimeImmutable());
 ```
 
 ## Settings

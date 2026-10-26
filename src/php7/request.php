@@ -36,6 +36,13 @@ $deps['request'] = new class ($deps) {
     private $attributes = [];
 
     /**
+     * Addresses (or CIDR ranges) of the proxies trusted for the X-Forwarded-For header.
+     *
+     * @var string[]
+     */
+    private $proxies = [];
+
+    /**
      * @param array $deps Dynamic set of dependencies.
      */
     public function __construct(array &$deps = [])
@@ -73,7 +80,42 @@ $deps['request'] = new class ($deps) {
      */
     public function ip()
     {
-        return $_SERVER['REMOTE_ADDR'] ?? null;
+        $ip = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        if (is_null($ip) || !$this->isTrustedProxy($ip)) {
+            return $ip;
+        }
+
+        // the closest address not belonging to a trusted proxy, the first
+        // ones can be sent by the client
+        $forwarded = array_filter(array_map('trim', explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '')), 'strlen');
+
+        while (!empty($forwarded)) {
+            $address = array_pop($forwarded);
+
+            if (false === filter_var($address, FILTER_VALIDATE_IP)) {
+                break;
+            }
+
+            $ip = $address;
+
+            if (!$this->isTrustedProxy($address)) {
+                break;
+            }
+        }
+
+        return $ip;
+    }
+
+    /**
+     * Trust the X-Forwarded-For header sent by these proxies (like a load
+     * balancer or Cloudflare), so `ip()` returns the address of the client.
+     *
+     * @param string[] $proxies Addresses or CIDR ranges, like "10.0.0.0/8"
+     */
+    public function setTrustedProxies(array $proxies)
+    {
+        $this->proxies = $proxies;
     }
 
     /**
@@ -109,6 +151,60 @@ $deps['request'] = new class ($deps) {
         }
 
         return is_null($key) ? $input : ($input[$key] ?? $default);
+    }
+
+    /**
+     * Whether the query string or the body has a value.
+     */
+    public function has(string $key): bool
+    {
+        return array_key_exists($key, $this->values());
+    }
+
+    /**
+     * Some values of the query string and of the body, the missing ones are skipped.
+     *
+     * @param string[] $keys
+     */
+    public function only(array $keys): array
+    {
+        return array_intersect_key($this->values(), array_flip($keys));
+    }
+
+    /**
+     * Value of the query string or of the body as a string, the default
+     * value when it's missing or it isn't a scalar (like `?email[]=...`).
+     */
+    public function string(string $key, string $default = ''): string
+    {
+        $value = $this->values()[$key] ?? null;
+
+        return is_scalar($value) ? (string) $value : $default;
+    }
+
+    /**
+     * Value of the query string or of the body as an integer, the default
+     * value when it's missing or it isn't an integer.
+     */
+    public function integer(string $key, int $default = 0): int
+    {
+        $value = $this->values()[$key] ?? null;
+        $value = is_scalar($value) ? filter_var($value, FILTER_VALIDATE_INT) : false;
+
+        return false === $value ? $default : $value;
+    }
+
+    /**
+     * Value of the query string or of the body as a boolean: "1", "true",
+     * "on" and "yes" are true, "0", "false", "off", "no" and "" are false,
+     * other values (and missing ones) are the default value.
+     */
+    public function boolean(string $key, bool $default = false): bool
+    {
+        $value = $this->values()[$key] ?? null;
+        $value = is_scalar($value) ? filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) : null;
+
+        return is_null($value) ? $default : $value;
     }
 
     /**
@@ -243,6 +339,55 @@ $deps['request'] = new class ($deps) {
     public function setAttribute(string $name, $value)
     {
         $this->attributes[$name] = $value;
+    }
+
+    /**
+     * Values of the query string and of the body, which take precedence.
+     */
+    private function values(): array
+    {
+        return array_replace($this->query(), $this->input());
+    }
+
+    /**
+     * Whether an address belongs to the trusted proxies.
+     */
+    private function isTrustedProxy(string $ip): bool
+    {
+        if (false === filter_var($ip, FILTER_VALIDATE_IP)) {
+            return false;
+        }
+
+        $address = inet_pton($ip);
+
+        foreach ($this->proxies as $proxy) {
+            $parts = explode('/', $proxy, 2);
+            $network = false === filter_var($parts[0], FILTER_VALIDATE_IP) ? '' : inet_pton($parts[0]);
+
+            if (strlen($network) !== strlen($address)) {
+                continue;
+            }
+
+            $bits = isset($parts[1]) ? (int) $parts[1] : 8 * strlen($address);
+
+            if ($bits < 0 || $bits > 8 * strlen($address)) {
+                continue;
+            }
+
+            // whole bytes of the prefix, then the bits of the next byte
+            $bytes = intdiv($bits, 8);
+            $mask = (0xff << (8 - $bits % 8)) & 0xff;
+
+            if (substr($address, 0, $bytes) !== substr($network, 0, $bytes)) {
+                continue;
+            }
+
+            if (0 === $bits % 8 || (ord($address[$bytes]) & $mask) === (ord($network[$bytes]) & $mask)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

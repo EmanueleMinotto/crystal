@@ -24,25 +24,59 @@ $session->regenerate();    // new session identifier, values are kept
 
 ## Flash messages
 
-A message shown once, on the next page, like after a redirect:
+`flash()` stores a value for the current request and the next one, like a message shown after a redirect:
 
 ```php
 $mf->post('/settings', function ($request, $response, $session) {
     // save the settings...
 
-    $session->set('flash', 'Settings saved.');
+    $session->flash('notice', 'Settings saved.');
 
     return $response->redirect('/settings');
 });
 
 $mf->get('/settings', function ($session) {
-    if ($session->has('flash')) {
-        echo '<p class="notice">'.htmlspecialchars($session->get('flash')).'</p>';
-        $session->remove('flash');
+    $notice = $session->getFlash('notice'); // null on the next pages
+
+    if (!is_null($notice)) {
+        echo '<p class="notice">'.htmlspecialchars($notice).'</p>';
     }
 
     echo '<form method="post">...</form>';
 });
+```
+
+Flash values are removed when the session is used by a request after the next one, sessions without flash values aren't changed.
+
+### The values of a form
+
+When a form isn't valid, `flashInput()` keeps its values for the next request, so the form can be shown again with them (fields containing `password` aren't stored):
+
+```php
+$mf->post('/contact', function ($request, $response, $session, $validator) {
+    $errors = $validator->check($request->input(), ['email' => ['required', 'email']]);
+
+    if (!empty($errors)) {
+        $session->flash('errors', $errors);
+        $session->flashInput($request->input());
+
+        return $response->redirect('/contact');
+    }
+
+    // send the message...
+});
+```
+
+```html
+<input name="email" value="<?php echo $this->e($session->old('email', '')); ?>">
+```
+
+### Reading a value once
+
+`pull()` returns a value and removes it:
+
+```php
+$cart = $session->pull('cart', []);
 ```
 
 ## How the session works
