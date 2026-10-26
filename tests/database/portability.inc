@@ -35,6 +35,9 @@ return function ($mf, PDO $pdo) {
     $db->update('order', ['group' => 'updated'], [1, 2], 'id');
     echo 'update in: '.json_encode($db->select('order', 'group', null, 'id'))."\n";
 
+    // a column combined with a SQL condition
+    echo 'select mixed: '.json_encode($db->select('order', 'id', ['group' => 'updated', $db->quoteIdentifier('id').' > ?' => 1], 'id'))."\n";
+
     // pagination: COUNT(*) and LIMIT with OFFSET
     $_GET['page'] = '2';
     $page = $mf('paginator')->paginate('order', ['group' => 'updated'], 'id', 1, 'id');
