@@ -2,9 +2,7 @@ The `paginator` service splits the rows of a table in pages, using the [[Databas
 The current page is read from the `page` value of the query string (`/api/posts?page=2`).
 
 ```php
-$mf('/api/posts', function () use ($mf) {
-    $paginator = $mf('paginator');
-
+$mf->get('/api/posts', function ($paginator) {
     // published posts, 20 for each page, the newest first
     $page = $paginator->paginate('posts', ['status' => 'published'], 'id DESC', 20);
 
@@ -45,14 +43,30 @@ Link: </api/posts?page=1>; rel="first", </api/posts?page=1>; rel="prev", </api/p
 
 With [[CORS]], add `Link` to the `expose` option so JavaScript clients can read it.
 
-## Other formats
+## HTML pages
 
-The result is an array, so it can be used anywhere, i.e. in a [[Template Engine]] page:
+The result is an array, so it can be used in a [[Template Engine]] page too:
 
 ```php
-$page = $mf('paginator')->paginate('posts', null, 'id DESC', 10);
+$mf->get('/blog', function ($paginator, $template) {
+    $page = $paginator->paginate('posts', ['status' => 'published'], 'id DESC', 10);
 
-echo $mf('template')->render('posts.html.php', ['posts' => $page['data'], 'links' => $page['links']]);
+    echo $template->render(__DIR__.'/templates/blog.html.php', $page);
+});
+```
+
+`templates/blog.html.php`:
+
+```html
+<?php foreach ($data as $post): ?>
+    <article><h2><?php echo $this->e($post['title']); ?></h2></article>
+<?php endforeach; ?>
+
+<nav>
+    <?php if ($links['prev']): ?><a href="<?php echo $this->e($links['prev']); ?>">Newer</a><?php endif; ?>
+    Page <?php echo $meta['page']; ?> of <?php echo $meta['pages']; ?>
+    <?php if ($links['next']): ?><a href="<?php echo $this->e($links['next']); ?>">Older</a><?php endif; ?>
+</nav>
 ```
 
 `page()` returns the current page and `url($page)` the URL of a page.

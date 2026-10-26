@@ -71,7 +71,8 @@ $config->env('APP_SECRET', 'secret'); // "secret" when not defined
 
 ## Using both
 
-Load the environment first, then the configuration files that rely on it:
+Load the environment first, then the configuration files that rely on it.
+Routes receive the service as the `$config` parameter:
 
 ```php
 $config = $mf('config');
@@ -79,7 +80,36 @@ $config = $mf('config');
 $config->loadEnv(__DIR__.'/.env');
 $config->load(__DIR__.'/config/app.php');
 
-$mf('/', function () use ($config) {
+$mf->get('/', function ($config) {
     echo $config->get('app.name');
 });
 ```
+
+### Environments
+
+One file for the common values, and one for each environment overriding some of them:
+
+```
+config/
+├── app.php      # every environment
+├── dev.php      # APP_ENV=dev
+└── prod.php     # APP_ENV=prod
+```
+
+```php
+$config = $mf('config');
+
+$config->loadEnv(__DIR__.'/.env');
+$config->load(__DIR__.'/config/app.php');
+
+$environment = $config->env('APP_ENV', 'prod');
+
+if (is_file(__DIR__.'/config/'.$environment.'.php')) {
+    $config->load(__DIR__.'/config/'.$environment.'.php');
+}
+
+$mf('errors')->enable((bool) $config->get('app.debug', false));
+$mf('database')::setPdo(new PDO($config->get('database.dsn'), $config->get('database.user'), $config->get('database.password')));
+```
+
+Never publish the `.env` file: keep it outside the public directory, or deny access to it (see [[When to use crystal]] for Apache).

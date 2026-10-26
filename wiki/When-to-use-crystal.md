@@ -74,7 +74,7 @@ $mf('database')::setPdo(new PDO(
     'YOUR_PASSWORD'
 ));
 
-$mf('/', function () {
+$mf->get('/', function () {
     echo 'Hello from InfinityFree!';
 });
 ```
@@ -96,15 +96,14 @@ Keep the credentials out of the code with a `.env` file and the [[Configuration]
 
 ```php
 // the "admin" gate has to be defined, see Authentication
-$mf('/migrate', $mf('middleware')->wrap(function () use ($mf) {
-    $migrations = $mf('migrations');
+$mf->get('/migrate', $mf('middleware')->wrap(function ($migrations) {
     $migrations->load(__DIR__.'/migrations');
 
     echo 'Applied: ' . implode(', ', $migrations->migrate());
 }, $mf('auth')->middleware('admin')));
 ```
 
--   **Scheduled tasks**: do light maintenance during normal requests (i.e. removing expired records after a login). Don't use external services to call your site periodically: InfinityFree considers it a way to bypass the missing cron jobs, and it can lead to a suspension.
+-   **Scheduled tasks**: do light maintenance during normal requests (e.g. removing expired records after a login). Don't use external services to call your site periodically: InfinityFree considers it a way to bypass the missing cron jobs, and it can lead to a suspension.
 
 ### Sources
 
@@ -121,7 +120,7 @@ Details below are the ones reported in October 2026 by the providers or by their
 | --- | --- | --- | --- |
 | [Byet.host](https://byet.host/), ProFreeHost, AeonFree and the other iFastNet free hostings | free | same platform of InfinityFree: no SSH, FTP upload | the same browser check of InfinityFree blocks API clients, so the [InfinityFree](#infinityfree) notes apply; cron and mail policies may differ |
 | [AwardSpace](https://www.awardspace.com/) | free | crystal runs on PHP 7.0 and newer, useful if the server still offers PHP 7 | PHP 8 isn't guaranteed on the free plan, PHP 5 isn't supported by crystal; 1 GB of space and one MySQL database |
-| [Freehostia](https://www.freehostia.com/) (Chocolate plan) | free | `crystal.php` (about 230 KB) fits the 2 MB per-file limit and the 250 MB of space | the MySQL database is limited to 10 MB |
+| [Freehostia](https://www.freehostia.com/) (Chocolate plan) | free | `crystal.php` (about 280 KB) fits the 2 MB per-file limit and the 250 MB of space | the MySQL database is limited to 10 MB |
 | [Altervista](https://www.altervista.org/) | free (Italian) | no Composer needed, the PHP version can be selected in the control panel (up to PHP 8.4 according to the forum) | the PHP core is customized by Altervista and SSH isn't advertised; check `phpinfo()` |
 | Entry-level shared hostings without SSH (like the basic Aruba Linux plans, where SSH is listed only in the advanced ones) | paid | no need to run Composer locally and upload thousands of files from `vendor/` | the PHP version and the extensions depend on the plan |
 | NAS (like Synology Web Station) and Raspberry Pi | self-hosted | one file in the web folder, PHP from the package manager (Synology recommends PHP 8.2 to 8.4) | the PHP extensions have to be enabled in the PHP profile; expose it to the Internet only behind HTTPS |

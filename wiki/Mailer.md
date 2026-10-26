@@ -1,29 +1,48 @@
-Crystal provides a mailer to compose and send emails, with plain text, HTML and attachments support, without external dependencies.
+The `mailer` service composes and sends emails, with plain text, HTML and attachments, using `mail()` or an SMTP server.
+
+```php
+$mf('mailer')->setDriver('smtp', [
+    'host' => 'smtp.example.com',
+    'port' => 587,
+    'username' => 'noreply@example.com',
+    'password' => 'secret',
+    'encryption' => 'tls',
+]);
+$mf('mailer')->setDefaults(['from' => ['noreply@example.com' => 'Example']]);
+
+$mf->post('/password-reset', function ($request, $mailer) {
+    $data = $request->validate(['email' => ['required', 'email']]);
+
+    $mailer->send([
+        'to' => $data['email'],
+        'subject' => 'Reset your password',
+        'text' => 'Open this link to choose a new password: https://example.com/reset?token=...',
+    ]);
+
+    echo 'Check your inbox!';
+});
+```
 
 ## Sending an Email
 
 Messages are arrays, the mailer builds the MIME message and sends it with the configured driver:
 
 ```php
-$mf(function () use ($mf) {
-    $mailer = $mf('mailer');
-
-    $mailer->send([
-        'from' => ['noreply@example.com' => 'Example'],
-        'to' => ['alice@example.com' => 'Alice', 'bob@example.com'],
-        'cc' => 'carol@example.com',
-        'bcc' => 'dave@example.com',
-        'reply_to' => 'support@example.com',
-        'subject' => 'Welcome!',
-        'text' => 'Hello Alice',
-        'html' => '<p>Hello <strong>Alice</strong></p>',
-        'headers' => ['X-Mailer' => 'crystal'],
-        'attachments' => [
-            '/path/to/invoice.pdf',
-            ['content' => 'foo,bar', 'name' => 'data.csv', 'type' => 'text/csv'],
-        ],
-    ]);
-});
+$mf('mailer')->send([
+    'from' => ['noreply@example.com' => 'Example'],
+    'to' => ['alice@example.com' => 'Alice', 'bob@example.com'],
+    'cc' => 'carol@example.com',
+    'bcc' => 'dave@example.com',
+    'reply_to' => 'support@example.com',
+    'subject' => 'Welcome!',
+    'text' => 'Hello Alice',
+    'html' => '<p>Hello <strong>Alice</strong></p>',
+    'headers' => ['X-Mailer' => 'crystal'],
+    'attachments' => [
+        '/path/to/invoice.pdf',
+        ['content' => 'foo,bar', 'name' => 'data.csv', 'type' => 'text/csv'],
+    ],
+]);
 ```
 
 Supported keys:
@@ -39,38 +58,35 @@ Addresses are validated with [`filter_var`](https://www.php.net/manual/en/functi
 
 `send` returns the success reported by the driver.
 
-#### Default Values
+### Default Values
 
 Values shared by every message (e.g. the sender) can be defined once:
 
 ```php
-$mf(function () use ($mf) {
-    $mailer = $mf('mailer');
+$mailer = $mf('mailer');
 
-    $mailer->setDefaults([
-        'from' => ['noreply@example.com' => 'Example'],
-    ]);
+$mailer->setDefaults([
+    'from' => ['noreply@example.com' => 'Example'],
+]);
 
-    $mailer->send([
-        'to' => 'alice@example.com',
-        'subject' => 'Welcome!',
-        'text' => 'Hello Alice',
-    ]);
-});
+$mailer->send([
+    'to' => 'alice@example.com',
+    'subject' => 'Welcome!',
+    'text' => 'Hello Alice',
+]);
 ```
 
-#### Using Templates
+### Using Templates
 
 The [[Template Engine]] can be used to render the body:
 
 ```php
-$mf(function () use ($mf) {
-    $mf('mailer')->send([
-        'to' => 'alice@example.com',
-        'subject' => 'Welcome!',
-        'html' => $mf('template')->render('emails/welcome.html.php', ['name' => 'Alice']),
-    ]);
-});
+$mf('mailer')->send([
+    'to' => 'alice@example.com',
+    'subject' => 'Welcome!',
+    'text' => 'Hello Alice, welcome!',
+    'html' => $mf('template')->render(__DIR__.'/templates/emails/welcome.html.php', ['name' => 'Alice']),
+]);
 ```
 
 ## Choosing a Driver

@@ -12,7 +12,7 @@ Versions and requirements are the ones published on Packagist in October 2026.
 | PSR-7 / PSR-15 | no (own request/response) | yes | no | no | no | no (own, bridges available) | no (own, bridges available) | yes |
 | Ecosystem | small | medium | small | small | small | very large | very large | medium |
 
-Crystal is the only one in the list that runs on PHP 7.0 and is distributed as a single file (`crystal.php`, about 230 KB) with nothing else to install.
+Crystal is the only one in the list that runs on PHP 7.0 and is distributed as a single file (`crystal.php`, about 280 KB) with nothing else to install.
 
 ## Features
 
@@ -77,7 +77,7 @@ To be fair, crystal has limits you should know before choosing it:
 
 -   **No PSR-7/PSR-15 interoperability**: PSR middlewares and request handlers can't be used directly.
 -   **No ORM, queues or scheduler**: the database helpers are CRUD operations over PDO.
--   **Regular expression routing**: routes are matched one by one and callbacks run in shutdown functions, an unusual design that allows multiple matching routes (see [[CGI Usage]]).
+-   **Regular expression routing**: routes are matched one by one and callbacks run in shutdown functions, an unusual design that allows multiple matching routes (see [[Routing]]).
 -   **Output of the routes is buffered** until the end of the script, so streaming large responses isn't supported (see [[Request Response]]).
 -   **Small ecosystem and community**: no plugins, few examples outside this wiki.
 -   **Not on Packagist**: it's installed by copying `crystal.php`.

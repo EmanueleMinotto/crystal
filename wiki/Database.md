@@ -1,179 +1,163 @@
-Most of the server-side applications based on PHP are based on a database, so crystal provides a simple utility to work with it.<br />
-The utility is accessible from `$mf('database')`.
-
-In this case the framework can't guess where is your database, so you need to setup at least the database connection.<br/>
-The connection can be done with the `setPdo` static method.
+The `database` service runs queries and CRUD operations over a [PDO](https://www.php.net/manual/en/book.pdo.php) connection.
+Set the connection once, at the beginning of `index.php`:
 
 ```php
-$mf(function () use ($mf) {
-    $db = $mf('database');
-    $db::setPdo(new PDO('sqlite::memory:'));
+$mf = require __DIR__.'/crystal.php';
+
+// SQLite
+$mf('database')::setPdo(new PDO('sqlite:'.__DIR__.'/app.sqlite'));
+
+// MySQL or MariaDB
+$mf('database')::setPdo(new PDO('mysql:host=localhost;dbname=app;charset=utf8mb4', 'user', 'password'));
+
+// PostgreSQL
+$mf('database')::setPdo(new PDO('pgsql:host=localhost;dbname=app', 'user', 'password'));
+```
+
+Then the routes receive the service as the `$database` parameter:
+
+```php
+$mf->get('/api/posts/{id:[0-9]+}', function (int $id, $database) {
+    return $database->read('posts', $id);
 });
 ```
 
-Once done, you are ready to interact with the database!
+Errors are thrown as `PDOException`, and values are read as strings (`"42"`).
 
-## Basic usage
-
-The basic usage is through CRUD operations: `create`, `read`, `update` and `delete`.
+## Create, read, update and delete
 
 ```php
-$mf(function () use ($mf) {
-    $db = $mf('database');
-    $db::setPdo(new PDO('sqlite::memory:'));
+$database = $mf('database');
 
-    // we need to create a table to show the interaction
-    // the `query` method accepts as 2nd argument an array of parameters, which will be passed to the query
-    // and returns an array of all the output, this is useful for SELECTs with joins
-    $db->query('CREATE TABLE my_table (id INTEGER PRIMARY KEY, name TEXT NOT NULL)');
+$id = $database->create('posts', ['title' => 'Hello', 'status' => 'draft']); // 1, the new id
 
-    // create a first row and store the inserted id in a variable
-    // for example in MySQL you don't need to pass an id if it's
-    // auto increment, but you'll need to know what's inserted
-    $createdId = $db->create('my_table', [
-        'id' => 1,
-        'name' => 'foo',
-    ]);
+$database->read('posts', $id);
+// ['id' => '1', 'title' => 'Hello', 'status' => 'draft'], or null when it doesn't exist
 
-    var_dump($db->read('my_table', $createdId));
-    // we'll receive an array with columns as keys and associated values
-    // array(2) {
-    //  ["id"]=> string(1) "1"
-    //  ["name"]=> string(3) "foo"
-    // }
+$database->update('posts', ['status' => 'published'], $id);
 
-    // will update the row with id=1 setting the column name to "bar"
-    $db->update('my_table', [
-        'name' => 'bar',
-    ], 1);
-
-    // this will delete the record with id=1
-    $db->delete('crystal_test', 1);
-});
+$database->delete('posts', $id);
 ```
 
-
-## Advanced usage
-
-Excluding the basic CRUD usage, there are more details for an advanced usage.<br />
-For example you can use the `select` method that's a mini query builder and many methods allow an advanced where building.
+`read`, `update` and `delete` find the rows by `id`, by another column (third argument of `read`, fourth of `update`) or by conditions:
 
 ```php
-$mf(function () use ($mf) {
-    $db = $mf('database');
-    $db::setPdo(new PDO('sqlite::memory:'));
+$database->read('users', 'alice@example.com', 'email');
+$database->read('users', ['email' => 'alice@example.com']);
 
-    // select all rows in the table my_table
-    $rows = $db->select('my_table');
+$database->update('posts', ['status' => 'archived'], ['status' => 'draft']);
+$database->delete('posts', [1, 2, 3]);                           // id IN (1, 2, 3)
+$database->delete('sessions', ['updated_at < ?' => time() - 86400]);
+```
 
-    // select only the column "id", by default selects "*"
-    $rows = $db->select('my_table', 'id');
-    // select only specific columns
-    $rows = $db->select('my_table', ['v1', 'v2']);
+## Selecting rows
 
-    // select by column and value
-    $db->select('my_table', null, [
-        'column' => 'value',
-    ]);
+`select($table, $fields, $where, $order, $limit)` returns a list of rows:
 
-    // select by custom query
-    $db->select('my_table', null, [
-        'column1 = ? OR column2 = ?' => ['value1', 'value2'],
-    ]);
+```php
+$database->select('posts');                                       // every row and column
+$database->select('posts', 'title');                              // one column
+$database->select('posts', ['id', 'title']);                      // some columns
 
-    // select by multiple custom conditions
-    $db->select('my_table', null, [
-        'column1 = ? OR column1 = ?' => ['value1', 'value2'],
-        'column3 LIKE ?' => '%value3%',
-    ]);
-
-    // select sorted
-    $db->select('my_table', ['id', 'column1'], [], 'id DESC');
-
-    // select limited
-    $db->select('my_table', ['id', 'column1'], [], null, 2);
-
-    // select, update or delete a list of rows
-    $db->select('my_table', null, [1, 2, 3]);              // id IN (1, 2, 3)
-    $db->delete('my_table', ['foo', 'bar'], 'name');       // name IN ('foo', 'bar')
-    $db->delete('my_table', [], 'name');                   // an empty list matches no rows
-
-    // read, update or delete by conditions, like the ones of select
-    $db->read('my_table', ['email' => 'foo@example.com']);
-    $db->update('my_table', ['status' => 'active'], ['status' => 'pending']);
-    $db->delete('my_table', ['created_at < ?' => time() - 86400]);
-});
+$database->select('posts', '*', ['status' => 'published']);       // WHERE status = 'published'
+$database->select('posts', '*', [], 'id DESC');                   // ORDER BY id DESC
+$database->select('posts', '*', [], 'id DESC', 10);               // LIMIT 10
+$database->select('posts', '*', [], 'id DESC', '10 OFFSET 20');   // LIMIT 10 OFFSET 20
 ```
 
 To split the rows in pages, see [[Pagination]].
 
-## Supported databases
+### Conditions
 
-Table and column names are quoted using the syntax of the connected database: backticks for MySQL, MariaDB and SQLite, brackets for SQL Server, double quotes (the SQL standard) for PostgreSQL and the others.
-So reserved words like `order` or `group` can be used as names.
+The conditions of `select`, `read`, `update` and `delete`:
+
+| Condition | SQL |
+| --- | --- |
+| `42` | `id = 42` |
+| `[1, 2, 3]` | `id IN (1, 2, 3)`, an empty list matches no rows |
+| `['status' => 'published']` | `status = 'published'` |
+| `['status' => 'published', 'author_id' => 7]` | `status = 'published' AND author_id = 7` |
+| `['views > ?' => 100]` | `(views > 100)` |
+| `['status = ? OR status = ?' => ['draft', 'review']]` | `(status = 'draft' OR status = 'review')` |
+| `['title LIKE ?' => '%php%', 'views > ?' => 100]` | `(title LIKE '%php%') AND (views > 100)` |
+
+Values are always passed as query parameters, so they're safe.
+To combine a column (`'status' => ...`) with a SQL condition (`'views > ?' => ...`), write both as SQL conditions:
 
 ```php
-$db->quoteIdentifier('order');       // `order` on MySQL, "order" on PostgreSQL
-$db->quoteIdentifier('app.users');   // `app`.`users` on MySQL
+$database->select('posts', '*', ['status = ?' => 'published', 'views > ?' => 100]);
 ```
 
-Custom SQL (conditions, ordering, `query`) isn't changed, so use `quoteIdentifier` there too when needed.
+## Custom queries
 
-MySQL, MariaDB, PostgreSQL and SQLite are tested. On SQL Server `read` and the limit of `select` don't work, since `LIMIT` isn't supported.
+`query($sql, $params)` runs any query and returns the rows, useful for joins and aggregations:
+
+```php
+$database->query(
+    'SELECT posts.title, users.name FROM posts JOIN users ON users.id = posts.author_id WHERE posts.status = ?',
+    ['published']
+);
+
+$database->query('SELECT status, COUNT(*) AS total FROM posts GROUP BY status');
+// [['status' => 'draft', 'total' => '1'], ['status' => 'published', 'total' => '2']]
+
+$database->query('CREATE TABLE IF NOT EXISTS tags (id INTEGER PRIMARY KEY, name TEXT NOT NULL)');
+```
+
+Named parameters work too: `query('SELECT * FROM users WHERE email = :email', ['email' => $email])`.
+To version the schema changes, see [[Migrations]].
 
 ## Transactions
 
-Using the [database transactions](https://en.wikipedia.org/wiki/Database_transaction), you can group operations without applying the changes if one of these operations fails.
-
+`transactional()` applies all the changes of the callback, or none of them when it throws an exception:
 
 ```php
-$mf(function () use ($mf) {
-    $db = $mf('database');
-    $db::setPdo(new PDO('sqlite::memory:'));
+$mf->post('/api/orders', function ($request, $database) {
+    $order = $request->validate(['product_id' => ['required', 'integer'], 'quantity' => ['required', 'integer', 'min' => 1]]);
 
-    $db->transactional(function () use ($db) {
-        $db->create('my_table', [
-            'id' => 1,
-            'name' => 'test',
-        ]);
+    return $database->transactional(function () use ($database, $order) {
+        $id = $database->create('orders', $order);
+        $database->query('UPDATE products SET stock = stock - ? WHERE id = ?', [$order['quantity'], $order['product_id']]);
 
-        // $db->inTransaction() === true
-
-        $db->read('not_existing_table', 1);
+        return ['id' => $id]; // the result of transactional()
     });
 });
 ```
 
-In this case, the row `(1, 'test')` won't be inserted in the table `my_table` (even if it exists, we created and used it in previous examples) because the next operations will fail, this will rollback all the changes.
-
-The same grouping can be done with the single operations.
+The same with the single operations:
 
 ```php
-$mf(function () use ($mf) {
-    $db = $mf('database');
-    $db::setPdo(new PDO('sqlite::memory:'));
+$database->beginTransaction();
 
-    $db->beginTransaction();
+try {
+    $database->create('orders', $order);
+    $database->query('UPDATE products SET stock = stock - 1 WHERE id = ?', [$order['product_id']]);
 
-    try {
-        $db->create('my_table', [
-            'id' => 1,
-            'name' => 'test',
-        ]);
+    $database->commit();
+} catch (Throwable $exception) {
+    $database->rollBack();
 
-        // $db->inTransaction() === true
+    throw $exception;
+}
 
-        $db->read('not_existing_table', 1);
-
-        $db->commit();
-    } catch (Throwable $exception) {
-        $db->rollBack();
-
-        throw $exception;
-    }
-});
+$database->inTransaction(); // false
 ```
 
-## Migrations
+## Supported databases
 
-Schema changes can be versioned and applied using the [[Migrations]] utility.
+MySQL, MariaDB, PostgreSQL and SQLite are tested. On SQL Server `read` and the limit of `select` don't work, since `LIMIT` isn't supported.
+
+Table and column names are quoted with the syntax of the database: backticks for MySQL, MariaDB and SQLite, brackets for SQL Server, double quotes (the SQL standard) for PostgreSQL and the others.
+So reserved words like `order` or `group` can be used as names.
+
+```php
+$database->quoteIdentifier('order');       // `order` on MySQL, "order" on PostgreSQL
+$database->quoteIdentifier('app.users');   // `app`.`users` on MySQL
+```
+
+Custom SQL (conditions, ordering, `query`) isn't changed, so use `quoteIdentifier` there too when needed.
+
+## Details
+
+-   `setPdo()` sets the `ERRMODE_EXCEPTION` and `ATTR_STRINGIFY_FETCHES` attributes of the connection
+-   the connection is shared: [[Migrations]], [[Pagination]], `useDatabase()` and `rememberWithDatabase()` of the [[Authentication]] use it too

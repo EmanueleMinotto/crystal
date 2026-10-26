@@ -15,3 +15,6 @@ See existing files for examples.
 Before committing your code, make sure you have built and linted with `composer build` and verified tests with `composer test`.
 
 Use .phpt extension to write tests.
+
+The wiki is tested too (`tests/docs`): every PHP code block must have a valid PHP 7.0 syntax, and the code blocks preceded by a line with their path (like `` `index.php`: ``) are extracted and run by the tests of their page.
+When a change affects the documented behavior, update the wiki and its tests together.

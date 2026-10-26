@@ -1,137 +1,169 @@
-Some days ago [Faryshta Mextly](https://plus.google.com/u/0/101549844949845796518/posts/dSE5pU3E4Y5) told me that this isn't a microframework, it's only a routing system, and he was right, so 
-I started thinking which services should a framework have and final solution was a 
-[dependency injection](http://en.wikipedia.org/wiki/Dependency_injection) system that could be used for every other service.
-
-It works like the routing system, except for the first parameter that must match the [regular expression](http://www.php.net/manual/en/language.variables.basics.php) `[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*` and every parameter is stored internally.
-The second parameter should be an [`anonymous function`](http://it2.php.net/manual/en/functions.anonymous.php), but can be a [`callable`](http://php.net/manual/en/language.types.callable.php).
+Services are the objects of the application, like the database connection or a repository.
+They're defined with a name and a factory, and created when they're used:
 
 ```php
-class Bar {
-    public $foo = 5;
+class PostRepository
+{
+    private $database;
+
+    public function __construct($database) { $this->database = $database; }
+
+    public function latest() { return $this->database->select('posts', '*', [], 'id DESC', 10); }
 }
 
-$mf('bar', function () {
-    return new Bar;
+$mf('posts', function () use ($mf) {
+    return new PostRepository($mf('database'));
 });
 
-$mf('/', function () use ($mf) {
-    $bar = $mf('bar');
-
-    var_dump($bar, $bar->foo);
+// the route receives the service by the name of the parameter
+$mf->get('/api/posts', function ($posts) {
+    return $posts->latest();
 });
 
-// object(Bar)
-//   public 'foo' => int 5
-// int 5
+// or anywhere with $mf()
+$latest = $mf('posts')->latest();
 ```
 
-## Container 
+The name must be a valid PHP variable name, like `posts` or `mailer_queue`.
 
-See https://www.php-fig.org/psr/psr-11/
+## Shared instances
 
-A `$mf('container')` utility is available too.<br/>
-The container will have the same values of those defined in the above section.
-
-Using the container, additional arguments can be passed to the service constructor.
+A factory is invoked each time the service is requested, so it returns a new object each time.
+To share one instance, pass the object itself, or keep it in a static variable:
 
 ```php
-class Bar {
-    public $foo = 5;
+// created now
+$mf('clock', new DateTimeImmutable());
 
-    public function __construct($value) { $this->foo = $value ?: 5; }
-}
+// created on first use, then shared
+$mf('posts', function () use ($mf) {
+    static $posts;
 
-$mf('bar', function ($value = 5) {
-    return new Bar($value);
-});
-
-$mf('/', function () use ($mf) {
-    var_dump(
-        $mf('container')->has('bar'),
-        $mf('container')->has('test'),
-        $mf('container')->get('bar'),
-        $mf('container')->get('bar', 7)
-    );
-});
-
-// bool true
-// bool false
-// object(Bar)
-//   public 'foo' => int 5
-// object(Bar)
-//   public 'foo' => int 7
-```
-
-### Autowiring
-
-Autowiring is the ability of the container to automatically create and inject dependencies.<br />
-This can be done in crystal using the `make` method of the container, this will understand when we are trying to create an object from an existing class and will try to guess the dependencies required for the class (so necessary for the `__construct` method).
-
-In the following example, should not be possible to create the class `Bar` without passing to it an instance of the dependency `Foo`, so the container inspects all the parameters required in the `Bar::__construct` method and if a dependency is not available will try to create it and inject it into the container.
-
-```php
-namespace TestContainerAutowiring;
-
-class Foo {
-    private $lorem = 'ipsum';
-}
-
-class Bar {
-    private $foo;
-
-    public function __construct(Foo $foo) {
-        $this->foo = $foo;
-    }
-}
-
-$mf(function () use ($mf) {
-    $value = $mf('container')->make(Bar::class);
-
-    var_dump($value);
+    return $posts ?: $posts = new PostRepository($mf('database'));
 });
 ```
 
-At the end, we will have 2 container elements: `TestContainerAutowiring\Bar` and `TestContainerAutowiring\Foo`.<br/>
-While `$value` will contain just the `TestContainerAutowiring\Bar` instance.
+## Settings
 
-#### Autowiring Aliases
-
-Sometimes classes require interfaces, you can set a default class for them through aliases.
+Values that aren't callable are settings: they're returned as they are.
 
 ```php
+$mf('site_name', 'My blog');
+$mf('per_page', 20);
 
-interface FooInterface {}
-
-class Foo implements FooInterface {
-    private $lorem = 'ipsum';
-}
-
-class Bar {
-    private $foo;
-
-    public function __construct(FooInterface $foo) {
-        $this->foo = $foo;
-    }
-}
-
-$mf(function () use ($mf) {
-    $mf('container')->alias('FooInterface', 'Foo');
-
-    $value = $mf('container')->make('Bar');
-
-    var_dump($value);
+$mf->get('/', function () use ($mf) {
+    echo $mf('site_name'); // "My blog"
 });
+```
+
+Settings aren't injected in the route callbacks (only objects are), use `use ($mf)` or the [[Configuration]] service for them.
+Built-in settings, like `json_flags` (see [[Request Response]]), are described in the pages of their services.
+
+## Factories with arguments
+
+The `container` service ([PSR-11](https://www.php-fig.org/psr/psr-11/)-like) passes additional arguments to the factories:
+
+```php
+$mf('greeter', function ($greeting = 'Hello') {
+    return function ($name) use ($greeting) {
+        return $greeting.' '.$name.'!';
+    };
+});
+
+$container = $mf('container');
+
+$container->has('greeter');                   // true
+$container->has('missing');                   // false
+$container->get('greeter');                   // same as $mf('greeter')
+call_user_func($container->get('greeter', 'Ciao'), 'Alice'); // "Ciao Alice!"
+```
+
+The container has the same values defined with `$mf()`, and `$container->set($name, $value)` is the same as `$mf($name, $value)`.
+
+## Autowiring
+
+`make()` creates an object of a class, creating the objects required by its constructor too:
+
+```php
+class Mailer {}
+
+class Newsletter
+{
+    private $mailer;
+
+    public function __construct(Mailer $mailer) { $this->mailer = $mailer; }
+}
+
+$newsletter = $mf('container')->make(Newsletter::class);
+```
+
+Objects made by `make()` are stored in the container with the name of their class, so the next calls return the same instances.
+
+Route parameters typed with a class receive the object made by `make()`, without defining any service:
+
+```php
+$mf->post('/newsletter', function (Newsletter $newsletter) {
+    // ...
+});
+```
+
+### Interfaces
+
+Constructors requiring interfaces need an alias to the class to use:
+
+```php
+interface CacheInterface {}
+
+class FileCache implements CacheInterface {}
+
+class Report
+{
+    public function __construct(CacheInterface $cache) { /* ... */ }
+}
+
+$mf('container')->alias(CacheInterface::class, FileCache::class);
+
+$report = $mf('container')->make(Report::class); // receives a FileCache
+```
 
 ## Built-in services
 
-The built-in services (`cache`, `container`, `database`, `listener`, `logger` and `template`) are created once, so every call returns the same instance.
+| Service | Description |
+| --- | --- |
+| `auth` | users, login, gates and API tokens, see [[Authentication]] |
+| `cache` | cache with many drivers, see [[Cache]] |
+| `config` | configuration and `.env` files, see [[Configuration]] |
+| `container` | the container described above |
+| `cors` | CORS headers, see [[CORS]] |
+| `csrf` | CSRF tokens, see [[CSRF]] |
+| `database` | PDO helpers, see [[Database]] |
+| `errors` | error pages, see [[Errors]] |
+| `limiter` | rate limiting, see [[Rate Limiting]] |
+| `listener` | events, see [[Event Listener]] |
+| `logger` | logs, see [[Logger]] |
+| `mailer` | emails, see [[Mailer]] |
+| `middleware` | middlewares, see [[Middleware]] |
+| `migrations` | database migrations, see [[Migrations]] |
+| `paginator` | pages of database rows, see [[Pagination]] |
+| `request` | the current request, see [[Request Response]] |
+| `response` | a **new** response each time, see [[Request Response]] |
+| `router` | named routes and groups, see [[Routing]] |
+| `session` | session values, see [[Session]] |
+| `template` | PHP templates, see [[Template Engine]] |
+| `validator` | validation rules, see [[Validation]] |
 
-They can be replaced like any other dependency:
+Except `response`, they're created once: every call returns the same instance.
+They can be replaced like any other service:
 
 ```php
 $mf('logger', new MyLogger());
 
-$mf(function () use ($mf) {
-    $mf('logger'); // MyLogger instance
-});
+$mf('logger'); // MyLogger instance, used by the other services too
 ```
+
+## Details
+
+-   strings that are names of functions are callable too: `$mf('format', 'date')` defines a factory invoking `date()`, use an array or an object to store them as settings
+-   factories with required arguments aren't injected in the route callbacks, since they can't be invoked without arguments
+
+The dependency injection exists because Faryshta Mextly pointed out that crystal, at the beginning, was only a routing system: every other service is now built on top of it.
