@@ -27,6 +27,20 @@ $deps['database'] = new class () {
     }
 
     /**
+     * Shared PDO connection, set with `setPdo()`.
+     *
+     * @throws LogicException When no connection was set
+     */
+    private static function pdo(): PDO
+    {
+        if (is_null(static::$pdo)) {
+            throw new LogicException('The database service has no connection, set it with $mf(\'database\')::setPdo(new PDO(...)).');
+        }
+
+        return static::$pdo;
+    }
+
+    /**
      * Quote a table or column name, using the syntax of the database.
      *
      * Names containing a dot (like `schema.table`) are quoted part by part.
@@ -62,7 +76,7 @@ $deps['database'] = new class () {
      */
     public function query(string $sql, array $params = [])
     {
-        $stmt = static::$pdo->prepare($sql);
+        $stmt = static::pdo()->prepare($sql);
         $stmt->execute($params);
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -137,7 +151,7 @@ $deps['database'] = new class () {
             $lastInsertId = $rows[0]['id'] ?? false;
         } else {
             $this->query($sql, $values);
-            $lastInsertId = static::$pdo->lastInsertId();
+            $lastInsertId = static::pdo()->lastInsertId();
         }
 
         // without auto increment (MySQL returns "0") the inserted id is used
@@ -156,7 +170,7 @@ $deps['database'] = new class () {
     public function read(string $table, $where, $key = 'id')
     {
         $where = $this->where($where, $key);
-        $stmt = static::$pdo->prepare(sprintf(
+        $stmt = static::pdo()->prepare(sprintf(
             'SELECT * FROM %s WHERE %s LIMIT 1',
             $this->quoteIdentifier($table),
             $where['sql']
@@ -189,7 +203,7 @@ $deps['database'] = new class () {
             }
         }
 
-        $stmt = static::$pdo->prepare(sprintf(
+        $stmt = static::pdo()->prepare(sprintf(
             'UPDATE %s SET %s WHERE %s',
             $this->quoteIdentifier($table),
             implode(', ', $set),
@@ -205,7 +219,7 @@ $deps['database'] = new class () {
     public function delete(string $table, $where, $key = 'id')
     {
         $where = $this->where($where, $key);
-        $stmt = static::$pdo->prepare(sprintf(
+        $stmt = static::pdo()->prepare(sprintf(
             'DELETE FROM %s WHERE %s',
             $this->quoteIdentifier($table),
             $where['sql']
@@ -220,7 +234,7 @@ $deps['database'] = new class () {
      */
     public function beginTransaction()
     {
-        return static::$pdo->beginTransaction();
+        return static::pdo()->beginTransaction();
     }
 
     /**
@@ -228,7 +242,7 @@ $deps['database'] = new class () {
      */
     public function commit()
     {
-        return static::$pdo->commit();
+        return static::pdo()->commit();
     }
 
     /**
@@ -236,7 +250,7 @@ $deps['database'] = new class () {
      */
     public function rollBack()
     {
-        return static::$pdo->rollBack();
+        return static::pdo()->rollBack();
     }
 
     /**
@@ -244,7 +258,7 @@ $deps['database'] = new class () {
      */
     public function inTransaction()
     {
-        return static::$pdo->inTransaction();
+        return static::pdo()->inTransaction();
     }
 
     /**

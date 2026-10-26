@@ -335,6 +335,14 @@ return new class () {
                 } elseif (!$exists && $parameter['optional']) {
                     // the next parameters can still be injected
                     $args[$position] = $parameter['default'];
+                } elseif (!$exists && $parameter['required'] && class_exists('ArgumentCountError')) {
+                    // PHP would throw the same error, without the name of the parameter
+                    throw new ArgumentCountError(sprintf(
+                        'Too few arguments to the callback of the route %s %s: $%s is neither a value of the route nor a service.',
+                        $_SERVER['REQUEST_METHOD'],
+                        parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH),
+                        $parameter['name']
+                    ));
                 } elseif (!$exists) {
                     break;
                 }
@@ -603,6 +611,8 @@ return new class () {
                         'optional' => $optional,
                         'default' => $optional ? $parameter->getDefaultValue() : null,
                         'variadic' => $parameter->isVariadic(),
+                        // missing values of the PHP functions are reported by PHP
+                        'required' => !$parameter->isOptional() && $parameter->getDeclaringFunction()->isUserDefined(),
                     ];
                 }
 

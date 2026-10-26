@@ -38,7 +38,25 @@ $deps['container'] = $deps['container'] ?? new class ($deps) {
     public function get(string $id, ...$args)
     {
         if (!$this->has($id)) {
-            throw new Exception(sprintf('Entry "%s" not found.', $id));
+            // the closest identifier, like "database" for "databse", short
+            // identifiers would be similar to too many entries
+            $suggestion = null;
+            $distance = 3;
+
+            foreach (array_merge(array_keys(static::$deps), array_keys(static::$aliases)) as $candidate) {
+                $candidateDistance = is_string($candidate) && strlen($candidate) <= 255 && strlen($id) <= 255
+                    ? levenshtein(strtolower($id), strtolower($candidate))
+                    : -1;
+
+                if ($candidateDistance >= 0 && $candidateDistance < $distance && $candidateDistance * 2 < strlen($id)) {
+                    $suggestion = $candidate;
+                    $distance = $candidateDistance;
+                }
+            }
+
+            throw new Exception(is_null($suggestion)
+                ? sprintf('Entry "%s" not found.', $id)
+                : sprintf('Entry "%s" not found, did you mean "%s"?', $id, $suggestion));
         }
 
         if (isset(static::$aliases[$id])) {
