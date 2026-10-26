@@ -113,6 +113,13 @@ $deps['auth'] = new class ($deps) {
     private $throttle;
 
     /**
+     * Login page of the guests of protected routes, null for a 401 response.
+     *
+     * @var string|null
+     */
+    private $loginUrl;
+
+    /**
      * @param array $deps Dynamic set of dependencies.
      */
     public function __construct(array &$deps = [])
@@ -196,6 +203,18 @@ $deps['auth'] = new class ($deps) {
     public function setSessionKey(string $key)
     {
         $this->sessionKey = $key;
+    }
+
+    /**
+     * Send the guests of protected routes (`protect()` without `$onFail` and
+     * `middleware()`) to the login page, instead of a 401 response.
+     *
+     * Requests asking for JSON or with a bearer token still receive a 401
+     * response, the requested URL of GET requests is used by `intended()`.
+     */
+    public function setLoginUrl(string $url)
+    {
+        $this->loginUrl = $url;
     }
 
     /**
@@ -576,6 +595,12 @@ $deps['auth'] = new class ($deps) {
                     return call_user_func_array($this->onFail, $args);
                 }
 
+                $redirect = 401 === $status ? $this->auth->loginRedirect() : null;
+
+                if (!is_null($redirect)) {
+                    return $redirect;
+                }
+
                 http_response_code($status);
             }
 
@@ -607,7 +632,7 @@ $deps['auth'] = new class ($deps) {
 
         return function ($request, callable $next) use ($ability) {
             if (!$this->check()) {
-                return $this->service('response')->setStatus(401);
+                return $this->loginRedirect() ?: $this->service('response')->setStatus(401);
             }
 
             if (!is_null($ability) && !$this->can($ability, $request)) {
@@ -616,6 +641,51 @@ $deps['auth'] = new class ($deps) {
 
             return $next();
         };
+    }
+
+    /**
+     * Response sending a guest to the login page set with `setLoginUrl()`,
+     * null when it isn't set or the request asks for JSON or has a bearer token.
+     *
+     * @return object|null
+     */
+    public function loginRedirect()
+    {
+        if (is_null($this->loginUrl) || !is_null($this->bearerToken())) {
+            return null;
+        }
+
+        $request = $this->service('request');
+
+        if (false !== stripos((string) $request->header('Accept', ''), 'json') || $request->isJson()) {
+            return null;
+        }
+
+        if ('GET' === $request->method() && !empty($_SERVER['REQUEST_URI'])) {
+            $this->service('session')->set('crystal_intended', $_SERVER['REQUEST_URI']);
+        }
+
+        return $this->service('response')->redirect($this->loginUrl);
+    }
+
+    /**
+     * Response sending the user to the page requested before the login
+     * (see `setLoginUrl()`), or to the default URL.
+     *
+     * @return object
+     */
+    public function intended(string $default = '/')
+    {
+        $session = $this->service('session');
+        $url = $session->get('crystal_intended');
+        $session->remove('crystal_intended');
+
+        // only paths of this website, "//example.com" and "/\example.com" would be another one
+        if (!is_string($url) || !preg_match('#^/(?![/\\\\])#', $url)) {
+            $url = $default;
+        }
+
+        return $this->service('response')->redirect($url);
     }
 
     // === INTERNALS ===

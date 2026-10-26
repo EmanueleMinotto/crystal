@@ -65,6 +65,14 @@ $database->select('posts', '*', [], 'id DESC', 10);               // LIMIT 10
 $database->select('posts', '*', [], 'id DESC', '10 OFFSET 20');   // LIMIT 10 OFFSET 20
 ```
 
+On PHP 8, named arguments skip the arguments with their default value:
+
+```php
+// PHP 8.0+
+$database->select('posts', order: 'id DESC', limit: 10);
+$database->select('posts', where: ['status' => 'published']);
+```
+
 To split the rows in pages, see [[Pagination]].
 
 ### Conditions

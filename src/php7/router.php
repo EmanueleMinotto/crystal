@@ -29,6 +29,13 @@ $deps['router'] = new class ($deps, $this) {
     private $routes = [];
 
     /**
+     * Whether only the first route matching a request is invoked.
+     *
+     * @var bool
+     */
+    private $firstMatch = false;
+
+    /**
      * @param array    $deps Dynamic set of dependencies.
      * @param callable $mf   The framework instance.
      */
@@ -36,6 +43,20 @@ $deps['router'] = new class ($deps, $this) {
     {
         $this->deps = &$deps;
         $this->mf = $mf;
+    }
+
+    /**
+     * Invoke only the first route matching the request (by priority, then
+     * in the order they're defined), instead of every matching route.
+     */
+    public function firstMatch(bool $enabled = true)
+    {
+        $this->firstMatch = $enabled;
+    }
+
+    public function isFirstMatch(): bool
+    {
+        return $this->firstMatch;
     }
 
     /**

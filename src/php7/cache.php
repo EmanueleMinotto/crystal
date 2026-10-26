@@ -823,6 +823,34 @@ $deps['cache'] = new class () {
     }
 
     /**
+     * Returns the cached value of a key or, when it's missing, stores and
+     * returns the result of the callback.
+     *
+     *   $stats = $cache->remember('stats', 300, function () { ... });
+     *
+     * @param  string                    $key      Cache key
+     * @param  int|null                  $ttl      Time-to-live in seconds, forever when null
+     * @param  callable                  $callback Function computing the value
+     * @return mixed                     Cached or computed value
+     * @throws \InvalidArgumentException If key is invalid
+     */
+    public function remember($key, $ttl, callable $callback)
+    {
+        // a default value that can't be cached, so null values are cached too
+        $missing = new \stdClass();
+        $value = $this->get($key, $missing);
+
+        if ($value !== $missing) {
+            return $value;
+        }
+
+        $value = $callback();
+        $this->set($key, $value, $ttl);
+
+        return $value;
+    }
+
+    /**
      * Stores a value in the cache under the given key.
      *
      * @param  string                    $key   Cache key

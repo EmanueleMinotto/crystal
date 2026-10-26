@@ -91,6 +91,28 @@ $deps['container'] = $deps['container'] ?? new class ($deps) {
         static::$deps[$id] = $value;
     }
 
+    /**
+     * Define a service created on first use, then shared: every call returns
+     * the same instance.
+     *
+     * @param string   $id      Identifier of the service.
+     * @param callable $factory Function creating the service.
+     */
+    public function share(string $id, callable $factory)
+    {
+        $created = false;
+        $instance = null;
+
+        $this->set($id, function () use ($factory, &$created, &$instance) {
+            if (!$created) {
+                $instance = $factory();
+                $created = true;
+            }
+
+            return $instance;
+        });
+    }
+
     public function alias(string $alias, string $id)
     {
         static::$aliases[$alias] = $id;

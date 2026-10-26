@@ -112,6 +112,30 @@ $mf->get('/account', $auth->protect(function () {
 
 Route parameters and injected services still work with protected routes.
 
+### Login page
+
+`setLoginUrl()` sends the guests of the protected routes to the login page, instead of the 401 response, and `intended()` sends them back after the login:
+
+```php
+$auth->setLoginUrl('/login');
+
+$mf->get('/account', $auth->protect(function () {
+    echo 'Your account';
+})); // guests are redirected to /login
+
+$mf->post('/login', function ($request, $auth) {
+    if ($auth->attempt($request->string('email'), $request->string('password'))) {
+        return $auth->intended('/account'); // the page requested before the login, or /account
+    }
+
+    // ...
+});
+```
+
+-   it applies to `protect()` without its second callback and to `middleware()`
+-   requests asking for JSON (`Accept` header or JSON body) and requests with a bearer token still receive a 401 response
+-   only the URL of `GET` requests is stored, and `intended()` uses only paths of the website
+
 ### Middleware
 
 With [[Middleware]], `$auth->middleware()` returns a 401 response for guests and `$auth->middleware('post:edit')` a 403 response when the gate denies, in this case the gate receives the current user and the request:

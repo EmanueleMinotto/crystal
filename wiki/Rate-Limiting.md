@@ -29,7 +29,7 @@ Responses have the `X-RateLimit-Limit` and `X-RateLimit-Remaining` headers.
 When the limit is reached, the route isn't invoked and a 429 response is returned with the `Retry-After` header (seconds before the window ends).
 The 429 response is rendered by the [[Errors]] service, so it's JSON when the client asks for it and it can be customized with `setRenderer()`.
 
-By default the requests are counted for each IP address (see `$request->ip()` in [[Request Response]]).
+By default the requests are counted for each IP address (see `$request->ip()` in [[Request Response]]): behind a proxy or Cloudflare, set the trusted proxies or every client would share the same counter.
 The third argument receives the request and returns the key of the counter, e.g. to limit each user of the [[Authentication]]:
 
 ```php
