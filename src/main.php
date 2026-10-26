@@ -1,5 +1,15 @@
 <?php
 
+/*
+ * Crystal PHP microframework
+ * https://github.com/EmanueleMinotto/crystal
+ *
+ * Released under the MIT license, see https://github.com/EmanueleMinotto/crystal/blob/master/LICENSE.md
+ *
+ * This file is built from the src directory of the repository: change those
+ * files and run `composer build` instead of editing this file.
+ */
+
 ### AUTOLOADER ###
 
 ### POLYFILLS ###
