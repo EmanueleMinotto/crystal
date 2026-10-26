@@ -6,7 +6,10 @@
 /.gitattributes              export-ignore
 /.github                     export-ignore
 /.gitignore                  export-ignore
-/.travis.yml                 export-ignore
 /composer.json               export-ignore
 /src                         export-ignore
 /tests                       export-ignore
+/wiki                        export-ignore
+
+# crystal.php is built from the src directory: its diff is hidden in the pull requests
+/crystal.php                 linguist-generated=true
