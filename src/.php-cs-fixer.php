@@ -1,8 +1,10 @@
 <?php
 
+// the templates used by the tests are fixtures, their output must not change
 $finder = (new PhpCsFixer\Finder())
-    ->in(__DIR__.'/../')
-    ->ignoreVCS(true)
+    ->in([__DIR__, __DIR__.'/../tests'])
+    ->exclude('template-engine')
+    ->append([__DIR__.'/../crystal.php'])
 ;
 
 return (new PhpCsFixer\Config())
