@@ -2408,7 +2408,25 @@ return new class () {
             public function get(string $id, ...$args)
             {
                 if (!$this->has($id)) {
-                    throw new Exception(sprintf('Entry "%s" not found.', $id));
+                    // the closest identifier, like "database" for "databse", short
+                    // identifiers would be similar to too many entries
+                    $suggestion = null;
+                    $distance = 3;
+
+                    foreach (array_merge(array_keys(static::$deps), array_keys(static::$aliases)) as $candidate) {
+                        $candidateDistance = is_string($candidate) && strlen($candidate) <= 255 && strlen($id) <= 255
+                            ? levenshtein(strtolower($id), strtolower($candidate))
+                            : -1;
+
+                        if ($candidateDistance >= 0 && $candidateDistance < $distance && $candidateDistance * 2 < strlen($id)) {
+                            $suggestion = $candidate;
+                            $distance = $candidateDistance;
+                        }
+                    }
+
+                    throw new Exception(is_null($suggestion)
+                        ? sprintf('Entry "%s" not found.', $id)
+                        : sprintf('Entry "%s" not found, did you mean "%s"?', $id, $suggestion));
                 }
 
                 if (isset(static::$aliases[$id])) {
@@ -2928,6 +2946,20 @@ return new class () {
             }
 
             /**
+             * Shared PDO connection, set with `setPdo()`.
+             *
+             * @throws LogicException When no connection was set
+             */
+            private static function pdo(): PDO
+            {
+                if (is_null(static::$pdo)) {
+                    throw new LogicException('The database service has no connection, set it with $mf(\'database\')::setPdo(new PDO(...)).');
+                }
+
+                return static::$pdo;
+            }
+
+            /**
              * Quote a table or column name, using the syntax of the database.
              *
              * Names containing a dot (like `schema.table`) are quoted part by part.
@@ -2963,7 +2995,7 @@ return new class () {
              */
             public function query(string $sql, array $params = [])
             {
-                $stmt = static::$pdo->prepare($sql);
+                $stmt = static::pdo()->prepare($sql);
                 $stmt->execute($params);
 
                 return $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -3038,7 +3070,7 @@ return new class () {
                     $lastInsertId = $rows[0]['id'] ?? false;
                 } else {
                     $this->query($sql, $values);
-                    $lastInsertId = static::$pdo->lastInsertId();
+                    $lastInsertId = static::pdo()->lastInsertId();
                 }
 
                 // without auto increment (MySQL returns "0") the inserted id is used
@@ -3057,7 +3089,7 @@ return new class () {
             public function read(string $table, $where, $key = 'id')
             {
                 $where = $this->where($where, $key);
-                $stmt = static::$pdo->prepare(sprintf(
+                $stmt = static::pdo()->prepare(sprintf(
                     'SELECT * FROM %s WHERE %s LIMIT 1',
                     $this->quoteIdentifier($table),
                     $where['sql']
@@ -3090,7 +3122,7 @@ return new class () {
                     }
                 }
 
-                $stmt = static::$pdo->prepare(sprintf(
+                $stmt = static::pdo()->prepare(sprintf(
                     'UPDATE %s SET %s WHERE %s',
                     $this->quoteIdentifier($table),
                     implode(', ', $set),
@@ -3106,7 +3138,7 @@ return new class () {
             public function delete(string $table, $where, $key = 'id')
             {
                 $where = $this->where($where, $key);
-                $stmt = static::$pdo->prepare(sprintf(
+                $stmt = static::pdo()->prepare(sprintf(
                     'DELETE FROM %s WHERE %s',
                     $this->quoteIdentifier($table),
                     $where['sql']
@@ -3121,7 +3153,7 @@ return new class () {
              */
             public function beginTransaction()
             {
-                return static::$pdo->beginTransaction();
+                return static::pdo()->beginTransaction();
             }
 
             /**
@@ -3129,7 +3161,7 @@ return new class () {
              */
             public function commit()
             {
-                return static::$pdo->commit();
+                return static::pdo()->commit();
             }
 
             /**
@@ -3137,7 +3169,7 @@ return new class () {
              */
             public function rollBack()
             {
-                return static::$pdo->rollBack();
+                return static::pdo()->rollBack();
             }
 
             /**
@@ -3145,7 +3177,7 @@ return new class () {
              */
             public function inTransaction()
             {
-                return static::$pdo->inTransaction();
+                return static::pdo()->inTransaction();
             }
 
             /**
@@ -7346,6 +7378,14 @@ return new class () {
                 } elseif (!$exists && $parameter['optional']) {
                     // the next parameters can still be injected
                     $args[$position] = $parameter['default'];
+                } elseif (!$exists && $parameter['required'] && class_exists('ArgumentCountError')) {
+                    // PHP would throw the same error, without the name of the parameter
+                    throw new ArgumentCountError(sprintf(
+                        'Too few arguments to the callback of the route %s %s: $%s is neither a value of the route nor a service.',
+                        $_SERVER['REQUEST_METHOD'],
+                        parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH),
+                        $parameter['name']
+                    ));
                 } elseif (!$exists) {
                     break;
                 }
@@ -7614,6 +7654,8 @@ return new class () {
                         'optional' => $optional,
                         'default' => $optional ? $parameter->getDefaultValue() : null,
                         'variadic' => $parameter->isVariadic(),
+                        // missing values of the PHP functions are reported by PHP
+                        'required' => !$parameter->isOptional() && $parameter->getDeclaringFunction()->isUserDefined(),
                     ];
                 }
 
