@@ -97,4 +97,5 @@ $ echo $?
 ## Going further
 
 -   wrap the import in a [transaction](Database#transactions), so a failure in the middle leaves the table as it was
+-   enable the `cli` service to read `--dry-run` with `$cli->option('dry-run')` and receive the services as parameters, see [Options and services](CLI-Usage#options-and-services)
 -   share the configuration with the website through a `bootstrap.php` file, like the [website with login](Cookbook-Website-With-Login)
