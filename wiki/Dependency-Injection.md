@@ -134,6 +134,7 @@ $report = $mf('container')->make(Report::class); // receives a FileCache
 | --- | --- |
 | `auth` | users, login, gates and API tokens, see [[Authentication]] |
 | `cache` | cache with many drivers, see [[Cache]] |
+| `cli` | options and services of the command line scripts, see [[CLI Usage]] |
 | `config` | configuration and `.env` files, see [[Configuration]] |
 | `container` | the container described above |
 | `cors` | CORS headers, see [[CORS]] |

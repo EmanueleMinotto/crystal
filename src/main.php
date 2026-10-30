@@ -215,7 +215,7 @@ return new class () {
              *
              * @return void
              */
-            $deploy = function ($cb, $priority = 0) use (&$deploy) {
+            $deploy = function ($cb, $priority = 0) use (&$deploy, &$deps) {
                 // Checking well formed call
                 assert(is_callable($cb));
                 assert(is_numeric($priority));
@@ -223,6 +223,13 @@ return new class () {
                 if ($priority > 0) {
                     // Recursion is used to set callback priority
                     return register_shutdown_function($deploy, $cb, $priority - 1);
+                }
+
+                // the cli service splits the options and injects the services
+                $cli = $deps['cli'] ?? null;
+
+                if (is_object($cli) && method_exists($cli, 'isEnabled') && method_exists($cli, 'invoke') && $cli->isEnabled()) {
+                    return register_shutdown_function([$cli, 'invoke'], $cb);
                 }
 
                 /**
